@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Motor Purchase — Procurement & Inventory System</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;color:#1a1a1a;background:#f5f5f5;font-size:14px}
+.app{display:flex;flex-direction:column;min-height:100vh;background:#fff}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid #e0e0e0;background:#fff;position:sticky;top:0;z-index:10}
+.topbar-title{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px;color:#1a1a1a}
+.logo{width:28px;height:28px;background:#2563eb;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px}
+.tabs{display:flex;gap:0;border-bottom:1px solid #e0e0e0;background:#fff;overflow-x:auto}
+.tab{padding:10px 18px;font-size:13px;cursor:pointer;border-bottom:2px solid transparent;color:#666;white-space:nowrap;font-weight:500;transition:all 0.15s}
+.tab.active{color:#2563eb;border-bottom-color:#2563eb}
+.tab:hover:not(.active){color:#1a1a1a;background:#f8f9fa}
+.content{padding:20px;flex:1;max-width:1100px;width:100%;margin:0 auto}
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.section-title{font-size:15px;font-weight:600;color:#1a1a1a}
+table{width:100%;border-collapse:collapse;font-size:12px;background:#fff}
+th{background:#f8f9fa;padding:9px 12px;text-align:left;font-weight:600;color:#555;border-bottom:1px solid #e0e0e0;white-space:nowrap}
+td{padding:9px 12px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+tr:hover td{background:#fafafa}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.badge-success{background:#dcfce7;color:#166534}
+.badge-warning{background:#fef9c3;color:#854d0e}
+.badge-danger{background:#fee2e2;color:#991b1b}
+.badge-accent{background:#dbeafe;color:#1d4ed8}
+.badge-gray{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0}
+.btn{padding:7px 14px;border-radius:6px;border:1px solid #d0d0d0;background:#fff;color:#1a1a1a;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-family:inherit;font-weight:500;transition:all 0.1s}
+.btn:hover{background:#f5f5f5}
+.btn-primary{background:#2563eb;color:#fff;border-color:#2563eb}
+.btn-primary:hover{background:#1d4ed8}
+.btn-sm{padding:5px 10px;font-size:11px}
+.btn-print{background:#16a34a;color:#fff;border-color:#16a34a}
+.btn-print:hover{background:#15803d}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px}
+.form-group{display:flex;flex-direction:column;gap:5px}
+label{font-size:12px;color:#555;font-weight:500}
+input,select,textarea{font-size:13px;font-family:inherit;border-radius:6px;border:1px solid #d0d0d0;padding:7px 10px;background:#fff;color:#1a1a1a;width:100%;transition:border 0.15s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,0.1)}
+textarea{resize:vertical;min-height:64px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px 18px;margin-bottom:14px}
+.card-title{font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:6px;color:#1a1a1a}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.metric{background:#f8f9fa;border:1px solid #e5e7eb;border-radius:8px;padding:14px;text-align:center}
+.metric-val{font-size:24px;font-weight:700;color:#1a1a1a}
+.metric-lbl{font-size:11px;color:#888;margin-top:2px}
+/* Document print area */
+.doc-preview{background:#fff;border:1px solid #d0d0d0;border-radius:8px;padding:24px;margin-top:10px;font-size:12px;line-height:1.7}
+.doc-preview h3{font-size:15px;font-weight:700;margin-bottom:4px;text-align:center;letter-spacing:0.5px}
+.doc-ref{text-align:right;font-size:11px;color:#666;margin-bottom:14px}
+.doc-table{width:100%;border-collapse:collapse;margin:10px 0}
+.doc-table th,.doc-table td{border:1px solid #ccc;padding:6px 10px;font-size:11px}
+.doc-table th{background:#f0f0f0;font-weight:600}
+.print-bar{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+/* Modal */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:100;align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal{background:#fff;border-radius:12px;border:1px solid #e0e0e0;padding:22px;width:520px;max-height:85vh;overflow-y:auto;position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.15)}
+.modal-title{font-size:15px;font-weight:600;margin-bottom:16px}
+.modal-close{position:absolute;top:16px;right:16px;background:none;border:none;cursor:pointer;color:#888;font-size:20px;line-height:1}
+/* Tabs inside doc section */
+.tabs-inner{display:flex;gap:0;border:1px solid #d0d0d0;border-radius:6px;overflow:hidden;margin-bottom:16px;width:fit-content}
+.tab-inner{padding:7px 14px;font-size:12px;cursor:pointer;background:#fff;color:#555;border:none;font-family:inherit;font-weight:500;transition:all 0.1s}
+.tab-inner.active{background:#2563eb;color:#fff}
+.tab-inner:hover:not(.active){background:#f0f0f0}
+.empty{text-align:center;padding:32px;color:#999;font-size:13px}
+/* Tracking */
+.tracking-pipeline{display:flex;align-items:center;margin:12px 0}
+.tracking-pipeline .step{flex:1;text-align:center;position:relative}
+.step-dot{width:14px;height:14px;border-radius:50%;margin:0 auto 5px;background:#d0d0d0}
+.step-dot.done{background:#2563eb}
+.step-dot.active{background:#16a34a}
+.step-label{font-size:9px;color:#888;word-break:break-word;line-height:1.3}
+.step-label.done{color:#2563eb}
+.step-line{position:absolute;top:7px;left:50%;width:100%;height:2px;background:#d0d0d0;z-index:-1}
+.step-line.done{background:#2563eb}
+/* Procurement steps */
+.proc-step{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:12px;border-left:4px solid #e0e0e0}
+.proc-step.done{border-left-color:#16a34a}
+.proc-step.active{border-left-color:#2563eb}
+.step-icon{width:38px;height:38px;border-radius:50%;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.step-num{font-size:18px;font-weight:700;color:#ccc}
+@media print{
+  .topbar,.tabs,.print-bar,.btn,.tabs-inner{display:none!important}
+  .doc-preview{border:none;padding:0}
+  body{background:#fff}
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5/build/index.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="topbar-title">
+      <div class="logo">⚙</div>
+      Motor Purchase — Procurement &amp; Inventory System
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-sm" onclick="openModal('addComp')">+ Add component</button>
+      <button class="btn btn-sm btn-primary" onclick="showTab('docs')">📄 Generate docs</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('dashboard')" id="tab-dashboard">📊 Dashboard</div>
+    <div class="tab" onclick="showTab('inventory')" id="tab-inventory">📦 Inventory</div>
+    <div class="tab" onclick="showTab('procurement')" id="tab-procurement">📋 Procurement steps</div>
+    <div class="tab" onclick="showTab('tracking')" id="tab-tracking">🚚 Courier tracking</div>
+    <div class="tab" onclick="showTab('docs')" id="tab-docs">🖨️ Documents &amp; print</div>
+  </div>
+
+  <div class="content" id="main-content"></div>
+</div>
+
+<!-- Add Component Modal -->
+<div class="modal-bg" id="modal-addComp">
+  <div class="modal">
+    <div class="modal-title">➕ Add component to inventory</div>
+    <button class="modal-close" onclick="closeModal('addComp')">✕</button>
+    <div class="form-row">
+      <div class="form-group"><label>Component name *</label><input id="m-name" placeholder="e.g. AC Motor 500Hz"></div>
+      <div class="form-group"><label>Quantity *</label><input id="m-qty" type="number" placeholder="1" min="1" value="1"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Vendor / supplier name</label><input id="m-vendor" placeholder="Company name"></div>
+      <div class="form-group"><label>Unit price (₹)</label><input id="m-price" type="number" placeholder="0" min="0"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Invoice number</label><input id="m-invoice" placeholder="INV-XXXX"></div>
+      <div class="form-group"><label>Payment status</label>
+        <select id="m-payment">
+          <option>Pending</option>
+          <option>Pre-delivery paid</option>
+          <option>Post-delivery paid</option>
+          <option>PO raised</option>
+          <option>Reimbursement pending</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>GeM status</label>
+        <select id="m-gem">
+          <option>Not checked</option>
+          <option>Available on GeM</option>
+          <option>Non-GeM certified</option>
+          <option>GeM exempted</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Category</label>
+        <select id="m-cat">
+          <option>Motor</option><option>Bearing</option><option>Sensor</option>
+          <option>Cable</option><option>Drive / VFD</option><option>Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:14px">
+      <label>Remarks</label>
+      <textarea id="m-remarks" placeholder="Technical specs, notes, etc."></textarea>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="closeModal('addComp')">Cancel</button>
+      <button class="btn btn-primary" onclick="addComponent()">✓ Add to inventory</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Tracking Modal -->
+<div class="modal-bg" id="modal-tracking">
+  <div class="modal">
+    <div class="modal-title">🚚 Add courier tracking</div>
+    <button class="modal-close" onclick="closeModal('tracking')">✕</button>
+    <div class="form-row">
+      <div class="form-group"><label>Component</label>
+        <select id="t-comp" style="width:100%"></select>
+      </div>
+      <div class="form-group"><label>Courier</label>
+        <select id="t-courier">
+          <option>Delhivery</option><option>BlueDart</option><option>DTDC</option>
+          <option>FedEx</option><option>Ecom Express</option><option>India Post</option>
+          <option>Xpressbees</option><option>Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Tracking ID *</label><input id="t-id" placeholder="e.g. BD9847362"></div>
+      <div class="form-group"><label>Expected delivery</label><input id="t-date" type="date"></div>
+    </div>
+    <div class="form-group" style="margin-bottom:14px">
+      <label>Current status</label>
+      <select id="t-status">
+        <option>Order placed</option><option>Picked up</option>
+        <option>In transit</option><option>Out for delivery</option><option>Delivered</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="closeModal('tracking')">Cancel</button>
+      <button class="btn btn-primary" onclick="addTracking()">✓ Save &amp; track</button>
+    </div>
+  </div>
+</div>
+
+<script src="tracking.js"></script>
+<script src="docgen.js"></script>
+<script>
+let inventory = [
+  {id:1,name:'AC Motor 500Hz',qty:2,vendor:'Bharat Motors Pvt Ltd',price:18500,invoice:'INV-2026-001',payment:'Pre-delivery paid',gem:'Non-GeM certified',cat:'Motor',remarks:'500Hz rotation, 3-phase, 2HP. Rotation axis motor.',tracking:{courier:'BlueDart',id:'BD9847362',status:'Delivered',expected:'2026-06-20'},date:'2026-06-15'},
+  {id:2,name:'Precision Bearing 6205',qty:10,vendor:'SKF India Ltd',price:420,invoice:'',payment:'PO raised',gem:'Available on GeM',cat:'Bearing',remarks:'For motor shaft end bearing. Deep groove ball bearing.',tracking:null,date:'2026-06-20'},
+  {id:3,name:'RTD Temperature Sensor PT100',qty:4,vendor:'Omega Engineering',price:3200,invoice:'INV-2026-003',payment:'Post-delivery paid',gem:'Non-GeM certified',cat:'Sensor',remarks:'PT100 type 4-wire RTD for motor winding temp monitoring.',tracking:{courier:'Delhivery',id:'DL7361829',status:'In transit',expected:'2026-07-02'},date:'2026-06-22'}
+];
+let nextId = 4;
+
+const TRACK_STEPS = Tracking.STEPS;
+
+function showTab(t){
+  document.querySelectorAll('.tab').forEach(el=>el.classList.remove('active'));
+  const tabEl = document.getElementById('tab-'+t);
+  if(tabEl) tabEl.classList.add('active');
+  const c = document.getElementById('main-content');
+  if(t==='dashboard') renderDashboard(c);
+  else if(t==='inventory') renderInventory(c);
+  else if(t==='procurement') renderProcurement(c);
+  else if(t==='tracking') renderTracking(c);
+  else if(t==='docs') renderDocs(c);
+}
+
+function openModal(id){
+  if(id==='tracking'){
+    const sel = document.getElementById('t-comp');
+    sel.innerHTML = inventory.map(i=>`<option value="${i.id}">${i.name}</option>`).join('');
+    const courierSel = document.getElementById('t-courier');
+    courierSel.innerHTML = Tracking.COURIERS.map(c=>`<option>${c}</option>`).join('');
+    const statusSel = document.getElementById('t-status');
+    statusSel.innerHTML = Tracking.STEPS.map(s=>`<option>${s}</option>`).join('');
+  }
+  document.getElementById('modal-'+id).classList.add('open');
+}
+function closeModal(id){document.getElementById('modal-'+id).classList.remove('open');}
+
+function addComponent(){
+  const name=document.getElementById('m-name').value.trim();
+  if(!name){alert('Please enter component name');return;}
+  inventory.push({
+    id:nextId++,
+    name,
+    qty:parseInt(document.getElementById('m-qty').value)||1,
+    vendor:document.getElementById('m-vendor').value.trim(),
+    price:parseFloat(document.getElementById('m-price').value)||0,
+    invoice:document.getElementById('m-invoice').value.trim(),
+    payment:document.getElementById('m-payment').value,
+    gem:document.getElementById('m-gem').value,
+    cat:document.getElementById('m-cat').value,
+    remarks:document.getElementById('m-remarks').value.trim(),
+    tracking:null,
+    date:new Date().toISOString().split('T')[0]
+  });
+  // reset
+  ['m-name','m-qty','m-vendor','m-price','m-invoice','m-remarks'].forEach(id=>{document.getElementById(id).value='';});
+  closeModal('addComp');
+  showTab('inventory');
+}
+
+function addTracking(){
+  const compId=parseInt(document.getElementById('t-comp').value);
+  const tid=document.getElementById('t-id').value.trim();
+  if(!tid){alert('Enter tracking ID');return;}
+  const comp=inventory.find(i=>i.id===compId);
+  if(comp){
+    comp.tracking=Tracking.newTracking({
+      courier:document.getElementById('t-courier').value,
+      trackingId:tid,
+      status:document.getElementById('t-status').value,
+      expected:document.getElementById('t-date').value
+    });
+    comp.tracking.id=tid; // keep legacy field used by UI (trackBadge/pipeline) in sync
+  }
+  document.getElementById('t-id').value='';
+  closeModal('tracking');
+  showTab('tracking');
+}
+
+function payBadge(p){
+  if(p.includes('Post-delivery')) return `<span class="badge badge-success">${p}</span>`;
+  if(p.includes('Pre-delivery')) return `<span class="badge badge-accent">${p}</span>`;
+  if(p.includes('PO')) return `<span class="badge badge-warning">${p}</span>`;
+  if(p.includes('Reimbursement')) return `<span class="badge badge-warning">${p}</span>`;
+  return `<span class="badge badge-gray">${p}</span>`;
+}
+function gemBadge(g){
+  if(g==='Available on GeM') return `<span class="badge badge-success">${g}</span>`;
+  if(g==='Non-GeM certified') return `<span class="badge badge-accent">${g}</span>`;
+  return `<span class="badge badge-gray">${g}</span>`;
+}
+function trackBadge(t){
+  if(!t) return `<span class="badge badge-gray">No tracking</span>`;
+  if(t.status==='Delivered') return `<span class="badge badge-success">✓ Delivered</span>`;
+  if(t.status==='In transit') return `<span class="badge badge-warning">🚚 In transit</span>`;
+  if(t.status==='Out for delivery') return `<span class="badge badge-accent">📦 Out for delivery</span>`;
+  return `<span class="badge badge-gray">${t.status}</span>`;
+}
+
+function fmtRs(n){return '₹'+Number(n).toLocaleString('en-IN');}
+
+function renderDashboard(c){
+  const total=inventory.length;
+  const totalVal=inventory.reduce((s,i)=>s+i.price*i.qty,0);
+  const paid=inventory.filter(i=>i.payment.includes('paid')).length;
+  const nonGem=inventory.filter(i=>i.gem==='Non-GeM certified').length;
+  c.innerHTML=`
+  <div class="metrics">
+    <div class="metric"><div class="metric-val">${total}</div><div class="metric-lbl">Components</div></div>
+    <div class="metric"><div class="metric-val">${fmtRs(totalVal)}</div><div class="metric-lbl">Total procurement value</div></div>
+    <div class="metric"><div class="metric-val">${paid}</div><div class="metric-lbl">Payments done</div></div>
+    <div class="metric"><div class="metric-val">${nonGem}</div><div class="metric-lbl">Non-GeM certified</div></div>
+  </div>
+  <div class="card">
+    <div class="card-title">📋 Procurement overview</div>
+    <table>
+      <thead><tr><th>Component</th><th>Category</th><th>Vendor</th><th>Qty</th><th>Amount</th><th>Payment</th><th>GeM</th><th>Delivery</th></tr></thead>
+      <tbody>${inventory.map(i=>`
+        <tr>
+          <td><strong>${i.name}</strong></td>
+          <td><span class="badge badge-gray">${i.cat}</span></td>
+          <td style="font-size:11px;color:#555">${i.vendor||'—'}</td>
+          <td style="text-align:center">${i.qty}</td>
+          <td>${fmtRs(i.price*i.qty)}</td>
+          <td>${payBadge(i.payment)}</td>
+          <td>${gemBadge(i.gem)}</td>
+          <td>${trackBadge(i.tracking)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+    <div class="card">
+      <div class="card-title">⚠️ Pending actions</div>
+      ${inventory.filter(i=>!i.invoice).map(i=>`<div style="font-size:12px;padding:6px 0;border-bottom:1px solid #f0f0f0;color:#555">📄 Add invoice for <strong>${i.name}</strong></div>`).join('')}
+      ${inventory.filter(i=>i.payment==='Pending').map(i=>`<div style="font-size:12px;padding:6px 0;border-bottom:1px solid #f0f0f0;color:#b45309">💳 Payment pending: <strong>${i.name}</strong></div>`).join('')}
+      ${inventory.filter(i=>i.gem==='Not checked').map(i=>`<div style="font-size:12px;padding:6px 0;border-bottom:1px solid #f0f0f0;color:#1d4ed8">🔍 Check GeM for: <strong>${i.name}</strong></div>`).join('')}
+      ${inventory.every(i=>i.invoice&&i.payment!=='Pending'&&i.gem!=='Not checked')?'<div class="empty">All clear! ✓</div>':''}
+    </div>
+    <div class="card">
+      <div class="card-title">🚚 Active shipments</div>
+      ${inventory.filter(i=>i.tracking&&i.tracking.status!=='Delivered').map(i=>`
+        <div style="padding:8px 0;border-bottom:1px solid #f0f0f0">
+          <div style="font-size:12px;font-weight:600">${i.name}</div>
+          <div style="font-size:11px;color:#555;margin:2px 0">${i.tracking.courier} · <span style="color:#2563eb;font-weight:500">${i.tracking.id}</span></div>
+          ${trackBadge(i.tracking)}
+          ${i.tracking.expected?`<div style="font-size:10px;color:#888;margin-top:2px">Expected: ${i.tracking.expected}</div>`:''}
+        </div>`).join('')||'<div class="empty">No active shipments</div>'}
+    </div>
+  </div>`;
+}
+
+function renderInventory(c){
+  c.innerHTML=`
+  <div class="section-header">
+    <span class="section-title">Inventory — ${inventory.length} components</span>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-sm" onclick="openModal('addComp')">+ Add component</button>
+      <button class="btn btn-sm" onclick="openModal('tracking')">🚚 Add tracking</button>
+    </div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+  <table>
+    <thead><tr><th>S.No</th><th>Comp. name</th><th>Qty</th><th>Vendor</th><th>Unit price</th><th>Total</th><th>Invoice</th><th>Payment</th><th>GeM</th><th>Tracking</th><th>Remarks</th></tr></thead>
+    <tbody>${inventory.map((i,idx)=>`
+      <tr>
+        <td style="color:#999;font-size:11px">${idx+1}</td>
+        <td><strong>${i.name}</strong><br><small style="color:#888">${i.cat}</small></td>
+        <td style="text-align:center">${i.qty}</td>
+        <td style="font-size:11px">${i.vendor||'—'}</td>
+        <td>${fmtRs(i.price)}</td>
+        <td style="font-weight:600">${fmtRs(i.price*i.qty)}</td>
+        <td style="font-size:11px;color:#2563eb">${i.invoice||'<span style="color:#ccc">Pending</span>'}</td>
+        <td>${payBadge(i.payment)}</td>
+        <td>${gemBadge(i.gem)}</td>
+        <td>${trackBadge(i.tracking)}</td>
+        <td style="font-size:11px;color:#666;max-width:140px">${i.remarks||'—'}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+  </div>`;
+}
+
+function renderProcurement(c){
+  const steps=[
+    {n:1,title:'Fund approval',desc:'Get budget approval from finance/HOD before purchase. Prepare a fund approval letter with item list, quantities, and total estimated amount.',icon:'📜',status:'done',note:''},
+    {n:2,title:'Quotation from vendors',desc:'Collect minimum 3 quotations from different vendors. Compare pricing, delivery time, and warranty. Select the best-value vendor.',icon:'🧾',status:'done',note:'Attach all 3 quotations as supporting documents'},
+    {n:3,title:'GeM / Non-GeM check',desc:'Search the Government e-Marketplace (GeM) portal for each item. If available on GeM, purchase from GeM. If not available, obtain a Non-GeM certificate for each item before purchasing from market.',icon:'🏛️',status:'active',note:'Visit gem.gov.in → Search item → If unavailable, note search ref. and generate Non-GeM certificate'},
+    {n:4,title:'Purchase — self / reimbursement or PO',desc:'Option A: Self-purchase with reimbursement (with bills). Option B: Raise a Purchase Order (PO) → Send to vendor via email → Make pre-delivery payment → Vendor ships item.',icon:'🛒',status:'pending',note:'Keep all bills, invoices, and payment receipts'},
+    {n:5,title:'Inventory update',desc:'After delivery: verify items received, record invoice number, update stock quantity, update payment status, add courier tracking, and mark delivery as complete.',icon:'📦',status:'pending',note:'Update all entries in this system after delivery'},
+  ];
+  c.innerHTML=`
+  <div class="section-title" style="margin-bottom:16px">Motor purchase — procurement workflow</div>
+  ${steps.map(s=>`
+    <div class="proc-step ${s.status}">
+      <div class="step-icon">${s.icon}</div>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">
+          <span style="font-size:14px;font-weight:600">Step ${s.n}: ${s.title}</span>
+          ${s.status==='done'?'<span class="badge badge-success">✓ Done</span>':s.status==='active'?'<span class="badge badge-accent">In progress</span>':'<span class="badge badge-gray">Pending</span>'}
+        </div>
+        <div style="font-size:12px;color:#444;margin-bottom:${s.note?'6px':'0'}">${s.desc}</div>
+        ${s.note?`<div style="font-size:11px;background:#fffbeb;border:1px solid #fde68a;border-radius:5px;padding:5px 8px;color:#92400e">📌 ${s.note}</div>`:''}
+        ${s.n===3?`<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+          <span class="badge badge-gray">gem.gov.in</span>
+          <span class="badge badge-gray">Search → Screenshot result</span>
+          <span class="badge badge-gray">If unavailable → Print Non-GeM cert</span>
+        </div>`:''}
+        ${s.n===4?`<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+          <span class="badge badge-accent">Email to vendor</span>
+          <span class="badge badge-warning">Pre-delivery payment</span>
+          <span class="badge badge-gray">PO number</span>
+          <span class="badge badge-success">Post-delivery invoice</span>
+        </div>`:''}
+      </div>
+    </div>`).join('')}`;
+}
+
+function renderTracking(c){
+  const tracked=inventory.filter(i=>i.tracking);
+  c.innerHTML=`
+  <div class="section-header">
+    <span class="section-title">Courier tracking — ${tracked.length} shipments</span>
+    <button class="btn btn-sm" onclick="openModal('tracking')">+ Add shipment</button>
+  </div>
+  ${tracked.length===0?'<div class="card"><div class="empty">No shipments added yet.</div></div>':
+  tracked.map(i=>{
+    const t=i.tracking;
+    const statusIdx=TRACK_STEPS.indexOf(t.status);
+    return `<div class="card">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
+        <div>
+          <div style="font-size:14px;font-weight:600">${i.name}</div>
+          <div style="font-size:12px;color:#555;margin-top:2px">${t.courier} · <strong style="color:#2563eb">${t.id}</strong></div>
+          ${t.expected?`<div style="font-size:11px;color:#888;margin-top:2px">Expected delivery: ${t.expected}</div>`:''}
+        </div>
+        ${trackBadge(t)}
+      </div>
+      <div class="tracking-pipeline">
+        ${TRACK_STEPS.map((s,idx)=>`
+          <div class="step" style="position:relative">
+            ${idx<TRACK_STEPS.length-1?`<div style="position:absolute;top:7px;left:50%;width:100%;height:2px;background:${idx<statusIdx?'#2563eb':'#e0e0e0'};z-index:0"></div>`:''}
+            <div class="step-dot ${idx<statusIdx?'done':idx===statusIdx?'active':''}" style="position:relative;z-index:1"></div>
+            <div class="step-label ${idx<=statusIdx?'done':''}">${s}</div>
+          </div>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+        <select id="status-sel-${i.id}" class="btn-sm" style="padding:5px 8px;border-radius:6px;border:1px solid #d0d0d0;font-family:inherit">
+          ${TRACK_STEPS.map(s=>`<option ${s===t.status?'selected':''}>${s}</option>`).join('')}
+        </select>
+        <button class="btn btn-sm" onclick="manualStatusUpdate(${i.id})">Update status</button>
+        <button class="btn btn-sm" onclick="refreshLiveStatus(${i.id})" title="${Tracking.CONFIG.enabled?'Pulls live status from courier API':'Live tracking not configured yet — see tracking.js'}">🔄 Refresh live status</button>
+        ${!Tracking.CONFIG.enabled?'<span style="font-size:10px;color:#999">(manual mode — add Shiprocket API key in tracking.js to enable)</span>':''}
+      </div>
+    </div>`;
+  }).join('')}
+  ${inventory.filter(i=>!i.tracking).length>0?`
+  <div class="card">
+    <div class="card-title">Components without tracking</div>
+    ${inventory.filter(i=>!i.tracking).map(i=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f0f0f0">
+        <div style="font-size:13px">${i.name}</div>
+        <button class="btn btn-sm" onclick="openTrackingFor(${i.id})">+ Add tracking</button>
+      </div>`).join('')}
+  </div>`:''}`;
+}
+
+function openTrackingFor(id){
+  openModal('tracking');
+  setTimeout(()=>{document.getElementById('t-comp').value=id;},100);
+}
+
+function manualStatusUpdate(id){
+  const comp=inventory.find(i=>i.id===id);
+  if(!comp||!comp.tracking)return;
+  const sel=document.getElementById('status-sel-'+id);
+  Tracking.updateStatus(comp.tracking,sel.value);
+  showTab('tracking');
+}
+
+async function refreshLiveStatus(id){
+  const comp=inventory.find(i=>i.id===id);
+  if(!comp||!comp.tracking)return;
+  if(!Tracking.CONFIG.enabled){
+    alert('Live tracking is not configured yet.\n\nThis runs in manual-update mode until you add a Shiprocket API key + proxy URL in tracking.js (see CONFIG at the top of that file).');
+    return;
+  }
+  const status=await Tracking.fetchLiveStatus(comp.tracking.trackingId||comp.tracking.id,comp.tracking.courier);
+  if(status){
+    Tracking.updateStatus(comp.tracking,status);
+    comp.tracking.autoTracked=true;
+    showTab('tracking');
+  } else {
+    alert('Could not fetch live status — check your API key/proxy, or update manually.');
+  }
+}
+
+let currentDocType='fund';
+const DOCX_TYPE_MAP={fund:'fund-approval',quotation:'quotation',payment:'payment-receipt',gem:'non-gem'};
+function renderDocs(c){
+  c.innerHTML=`
+  <div class="section-header">
+    <span class="section-title" style="margin-bottom:0">📄 Documents &amp; one-click print</span>
+    <button class="btn btn-sm" onclick="downloadAllDocx()">📁 Download all (.docx + .zip)</button>
+  </div>
+  <div class="tabs-inner">
+    <button class="tab-inner active" onclick="switchDoc(this,'fund')">Fund approval</button>
+    <button class="tab-inner" onclick="switchDoc(this,'quotation')">Quotation</button>
+    <button class="tab-inner" onclick="switchDoc(this,'payment')">Payment receipt</button>
+    <button class="tab-inner" onclick="switchDoc(this,'gem')">Non-GeM cert.</button>
+    <button class="tab-inner" onclick="switchDoc(this,'invoice')">Inventory report</button>
+  </div>
+  <div id="doc-area"></div>`;
+  renderDoc('fund');
+}
+
+function switchDoc(el,type){
+  document.querySelectorAll('.tab-inner').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  currentDocType=type;
+  renderDoc(type);
+}
+
+function today(){return new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});}
+function refNo(prefix){return prefix+'-2026-'+String(Math.floor(Math.random()*899)+100).padStart(3,'0');}
+
+// Map this app's inventory item shape to the shape DocGen.js expects
+function toDocGenComponents(){
+  return inventory.map(i=>({
+    name:i.name,
+    qty:i.qty,
+    unitPrice:i.price,
+    vendor:i.vendor,
+    invoiceNo:i.invoice,
+    paymentStatus:i.payment,
+    gemStatus:i.gem,
+    itemType:'Non-Recurring',
+    gemSearchRef:''
+  }));
+}
+
+let docMeta={piName:'',projectTitle:'',projectNo:'',labName:'WeRoCon Lab'};
+
+async function downloadDocx(type){
+  try{
+    const filenames={'fund-approval':'Fund_Approval','quotation':'Quotation_Comparison','non-gem':'Non_GeM_Certificate','payment-receipt':'Payment_Receipt'};
+    const stamp=new Date().toISOString().split('T')[0];
+    await DocGen.downloadOne(type,docMeta,toDocGenComponents(),`${filenames[type]}_${stamp}.docx`);
+  }catch(e){
+    console.error(e);
+    alert('Could not generate .docx — '+e.message);
+  }
+}
+
+async function downloadAllDocx(){
+  try{
+    await DocGen.downloadBundle(docMeta,toDocGenComponents());
+  }catch(e){
+    console.error(e);
+    alert('Could not generate bundle — '+e.message);
+  }
+}
+
+function renderDoc(type){
+  const area=document.getElementById('doc-area');
+  const totalVal=inventory.reduce((s,i)=>s+i.price*i.qty,0);
+  let html='';
+
+  if(type==='fund'){
+    html=`<div class="doc-preview" id="printable">
+      <h3>FUND APPROVAL REQUEST</h3>
+      <div style="text-align:center;font-size:11px;color:#555;margin-bottom:4px">Department of Engineering / R&amp;D</div>
+      <div class="doc-ref">Ref No: ${refNo('FA')} &nbsp;|&nbsp; Date: ${today()}</div>
+      <table class="doc-table">
+        <tr><th width="25%">Department</th><td>Engineering / R&amp;D</td><th width="25%">Purpose</th><td>Motor Purchase</td></tr>
+        <tr><th>Requested by</th><td>_____________________</td><th>Designation</th><td>_____________________</td></tr>
+        <tr><th>HOD</th><td>_____________________</td><th>Budget head</th><td>Capital / Maintenance</td></tr>
+      </table>
+      <div style="margin:12px 0 6px;font-size:12px;font-weight:600">Items requiring fund approval:</div>
+      <table class="doc-table">
+        <thead><tr><th>S.No</th><th>Component name</th><th>Category</th><th>Qty</th><th>Vendor</th><th>Unit price</th><th>Total amount</th></tr></thead>
+        <tbody>
+          ${inventory.map((i,idx)=>`<tr><td style="text-align:center">${idx+1}</td><td>${i.name}</td><td>${i.cat}</td><td style="text-align:center">${i.qty}</td><td>${i.vendor||'—'}</td><td style="text-align:right">${fmtRs(i.price)}</td><td style="text-align:right;font-weight:600">${fmtRs(i.price*i.qty)}</td></tr>`).join('')}
+          <tr style="background:#f0f0f0"><td colspan="6" style="text-align:right;font-weight:700">Grand Total</td><td style="text-align:right;font-weight:700;font-size:13px">${fmtRs(totalVal)}</td></tr>
+        </tbody>
+      </table>
+      <div style="font-size:11px;margin:10px 0;color:#555">Note: Minimum 3 vendor quotations have been obtained. GeM portal has been checked for all items.</div>
+      <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;font-size:11px">
+        <div style="border-top:1px solid #ccc;padding-top:8px">Requested by:<br><br><br>Name: _____________<br>Sign: _____________<br>Date: _____________</div>
+        <div style="border-top:1px solid #ccc;padding-top:8px">HOD Approval:<br><br><br>Name: _____________<br>Sign: _____________<br>Date: _____________</div>
+        <div style="border-top:1px solid #ccc;padding-top:8px">Finance Approval:<br><br><br>Name: _____________<br>Sign: _____________<br>Date: _____________</div>
+      </div>
+    </div>`;
+  } else if(type==='quotation'){
+    html=`<div class="doc-preview" id="printable">
+      <h3>VENDOR QUOTATION COMPARISON STATEMENT</h3>
+      <div class="doc-ref">Ref No: ${refNo('QT')} &nbsp;|&nbsp; Date: ${today()}</div>
+      <table class="doc-table">
+        <tr><th width="25%">Department</th><td>Engineering / R&amp;D</td><th width="25%">Prepared by</th><td>_____________________</td></tr>
+      </table>
+      <div style="margin:12px 0 6px;font-size:12px;font-weight:600">Comparative statement of quotations:</div>
+      <table class="doc-table">
+        <thead><tr><th>S.No</th><th>Component</th><th>Qty</th><th>Vendor 1 (Selected)</th><th>Vendor 2</th><th>Vendor 3</th><th>Quoted amount</th><th>GeM status</th><th>Remarks</th></tr></thead>
+        <tbody>${inventory.map((i,idx)=>`
+          <tr>
+            <td style="text-align:center">${idx+1}</td>
+            <td>${i.name}</td>
+            <td style="text-align:center">${i.qty}</td>
+            <td style="color:#166534">${i.vendor||'—'} ✓</td>
+            <td style="color:#888">___________</td>
+            <td style="color:#888">___________</td>
+            <td style="font-weight:600">${fmtRs(i.price*i.qty)}</td>
+            <td>${i.gem}</td>
+            <td style="font-size:10px">${i.remarks||'—'}</td>
+          </tr>`).join('')}
+          <tr style="background:#f0f0f0"><td colspan="6" style="text-align:right;font-weight:700">Total selected amount</td><td style="font-weight:700">${fmtRs(totalVal)}</td><td colspan="2"></td></tr>
+        </tbody>
+      </table>
+      <div style="margin-top:16px;font-size:11px;color:#555">Certified that minimum 3 quotations have been obtained and comparative statement prepared as per procurement policy.</div>
+      <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:11px">
+        <div style="border-top:1px solid #ccc;padding-top:8px">Prepared by:<br><br>Sign: _____________&nbsp; Date: _____________</div>
+        <div style="border-top:1px solid #ccc;padding-top:8px">Approved by (HOD):<br><br>Sign: _____________&nbsp; Date: _____________</div>
+      </div>
+    </div>`;
+  } else if(type==='payment'){
+    const invoiced=inventory.filter(i=>i.invoice);
+    html=`<div class="doc-preview" id="printable">
+      <h3>PAYMENT RECEIPT / REIMBURSEMENT CLAIM</h3>
+      <div class="doc-ref">Receipt No: ${refNo('PR')} &nbsp;|&nbsp; Date: ${today()}</div>
+      <table class="doc-table">
+        <tr><th>Department</th><td>Engineering / R&amp;D</td><th>Claimant</th><td>_____________________</td></tr>
+        <tr><th>Purpose</th><td colspan="3">Motor Purchase — procurement expenses</td></tr>
+      </table>
+      <div style="margin:12px 0 6px;font-size:12px;font-weight:600">Payment details:</div>
+      <table class="doc-table">
+        <thead><tr><th>S.No</th><th>Component</th><th>Invoice no.</th><th>Vendor</th><th>Amount (₹)</th><th>Payment mode</th><th>Status</th></tr></thead>
+        <tbody>
+          ${invoiced.length>0?invoiced.map((i,idx)=>`<tr><td>${idx+1}</td><td>${i.name}</td><td style="color:#2563eb">${i.invoice}</td><td>${i.vendor||'—'}</td><td style="font-weight:600">${fmtRs(i.price*i.qty)}</td><td>___________</td><td>${i.payment}</td></tr>`).join('')
+          :'<tr><td colspan="7" style="text-align:center;color:#999">No invoiced items yet</td></tr>'}
+          ${invoiced.length>0?`<tr style="background:#f0f0f0"><td colspan="4" style="text-align:right;font-weight:700">Total claim</td><td style="font-weight:700">${fmtRs(invoiced.reduce((s,i)=>s+i.price*i.qty,0))}</td><td colspan="2"></td></tr>`:''}
+        </tbody>
+      </table>
+      <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;font-size:11px">
+        <div style="border-top:1px solid #ccc;padding-top:8px">Claimed by:<br><br>Sign: _____________<br>Date: _____________</div>
+        <div style="border-top:1px solid #ccc;padding-top:8px">Verified by:<br><br>Sign: _____________<br>Date: _____________</div>
+        <div style="border-top:1px solid #ccc;padding-top:8px">Accounts (paid):<br><br>Sign: _____________<br>Date: _____________</div>
+      </div>
+    </div>`;
+  } else if(type==='gem'){
+    const nonGem=inventory.filter(i=>i.gem==='Non-GeM certified'||i.gem==='Not checked');
+    html=`<div class="doc-preview" id="printable">
+      <h3>CERTIFICATE FOR NON-GeM PURCHASE</h3>
+      <div style="text-align:center;font-size:11px;color:#555;margin-bottom:4px">(As per GFR 2017 Rule 149 / GeM Procurement Guidelines)</div>
+      <div class="doc-ref">Cert No: ${refNo('NG')} &nbsp;|&nbsp; Date: ${today()}</div>
+      <div style="font-size:12px;margin:10px 0;line-height:1.8">This is to certify that the following items were searched on the Government e-Marketplace (GeM) portal (gem.gov.in) and are either <strong>not available</strong> on GeM or do not meet the required technical specifications. Hence, purchase is proposed through the open market / direct procurement route:</div>
+      <table class="doc-table">
+        <thead><tr><th>S.No</th><th>Item description</th><th>Required specification</th><th>GeM search reference</th><th>Reason for non-GeM</th></tr></thead>
+        <tbody>${nonGem.length>0?nonGem.map((i,idx)=>`<tr><td style="text-align:center">${idx+1}</td><td>${i.name}</td><td style="font-size:10px">${i.remarks||'As per technical requirement'}</td><td>GEM/SRCH/${new Date().getFullYear()}/${String(idx+1).padStart(4,'0')}</td><td>Not available meeting required technical specifications on GeM portal</td></tr>`).join('')
+        :'<tr><td colspan="5" style="text-align:center;color:#999">No non-GeM items found</td></tr>'}</tbody>
+      </table>
+      <div style="font-size:11px;margin:12px 0;color:#555">I hereby certify that the above search was conducted on GeM portal on ${today()} and the items are not available on GeM as per our technical requirement.</div>
+      <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:11px">
+        <div style="border-top:1px solid #ccc;padding-top:8px">Certified by:<br><br>Name: ___________________________<br>Designation: _____________________<br>Sign: ______________  Date: _______</div>
+        <div style="border-top:1px solid #ccc;padding-top:8px">Countersigned (HOD):<br><br>Name: ___________________________<br>Designation: _____________________<br>Sign: ______________  Date: _______</div>
+      </div>
+    </div>`;
+  } else if(type==='invoice'){
+    html=`<div class="doc-preview" id="printable">
+      <h3>INVENTORY STOCK REGISTER</h3>
+      <div class="doc-ref">Report Date: ${today()} &nbsp;|&nbsp; Generated by: Procurement System</div>
+      <table class="doc-table">
+        <thead><tr><th>S.No</th><th>Component name</th><th>Category</th><th>Qty</th><th>Vendor</th><th>Invoice no.</th><th>Unit price</th><th>Total value</th><th>Payment status</th><th>GeM status</th><th>Delivery</th><th>Remarks</th></tr></thead>
+        <tbody>
+          ${inventory.map((i,idx)=>`<tr><td>${idx+1}</td><td>${i.name}</td><td>${i.cat}</td><td style="text-align:center">${i.qty}</td><td>${i.vendor||'—'}</td><td style="color:#2563eb">${i.invoice||'Pending'}</td><td>${fmtRs(i.price)}</td><td style="font-weight:600">${fmtRs(i.price*i.qty)}</td><td>${i.payment}</td><td>${i.gem}</td><td>${i.tracking?i.tracking.status:'—'}</td><td style="font-size:10px">${i.remarks||'—'}</td></tr>`).join('')}
+          <tr style="background:#f0f0f0"><td colspan="7" style="text-align:right;font-weight:700">Total stock value</td><td style="font-weight:700">${fmtRs(totalVal)}</td><td colspan="4"></td></tr>
+        </tbody>
+      </table>
+      <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:11px">
+        <div style="border-top:1px solid #ccc;padding-top:8px">Prepared by:<br><br>Sign: _____________  Date: _____________</div>
+        <div style="border-top:1px solid #ccc;padding-top:8px">Store In-charge:<br><br>Sign: _____________  Date: _____________</div>
+      </div>
+    </div>`;
+  }
+
+  area.innerHTML = html + `
+  <div class="print-bar">
+    <button class="btn btn-print" onclick="printDoc()">🖨️ Print / Save as PDF</button>
+    ${DOCX_TYPE_MAP[type]?`<button class="btn btn-primary" onclick="downloadDocx('${DOCX_TYPE_MAP[type]}')">📁 Download as Word (.docx)</button>`:''}
+    <button class="btn" onclick="alert('To customize template: note what changes you want and ask Claude to update the template for your department letterhead, logo, and fields.')">✏️ Customize template</button>
+  </div>`;
+}
+
+function printDoc(){
+  const content=document.getElementById('printable');
+  if(!content)return;
+  const win=window.open('','_blank','width=900,height=700');
+  win.document.write(`<!DOCTYPE html><html><head><title>Document</title><style>
+    body{font-family:Arial,sans-serif;padding:32px;font-size:12px;color:#1a1a1a}
+    h3{text-align:center;font-size:16px;margin-bottom:4px;letter-spacing:0.5px}
+    table{width:100%;border-collapse:collapse;margin:8px 0}
+    th,td{border:1px solid #aaa;padding:6px 10px;font-size:11px}
+    th{background:#f0f0f0;font-weight:600}
+    .doc-ref{text-align:right;font-size:11px;color:#666;margin-bottom:14px}
+    @media print{button{display:none}}
+  </style></head><body>${content.innerHTML}<br><button onclick="window.print()" style="padding:8px 20px;background:#2563eb;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px">🖨️ Print</button></body></html>`);
+  win.document.close();
+  setTimeout(()=>win.print(),400);
+}
+
+showTab('dashboard');
+</script>
+</body>
+</html>
