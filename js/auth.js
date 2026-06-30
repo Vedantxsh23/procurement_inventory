@@ -10,7 +10,7 @@
    and shared live data, swap this for Supabase Auth (see README.md).
 */
 
-const AUTH_KEY = 'werocon_auth_ok';
+const AUTH_KEY = 'Sauravk';
 
 // Change these to your own values before publishing.
 // You can set DIFFERENT passwords for you vs your professor if you want
