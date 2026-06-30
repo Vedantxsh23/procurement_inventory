@@ -90,8 +90,6 @@ textarea{resize:vertical;min-height:64px}
   body{background:#fff}
 }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/docx@8.5/build/index.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
 <div class="app">
@@ -204,8 +202,6 @@ textarea{resize:vertical;min-height:64px}
   </div>
 </div>
 
-<script src="tracking.js"></script>
-<script src="docgen.js"></script>
 <script>
 let inventory = [
   {id:1,name:'AC Motor 500Hz',qty:2,vendor:'Bharat Motors Pvt Ltd',price:18500,invoice:'INV-2026-001',payment:'Pre-delivery paid',gem:'Non-GeM certified',cat:'Motor',remarks:'500Hz rotation, 3-phase, 2HP. Rotation axis motor.',tracking:{courier:'BlueDart',id:'BD9847362',status:'Delivered',expected:'2026-06-20'},date:'2026-06-15'},
@@ -214,7 +210,7 @@ let inventory = [
 ];
 let nextId = 4;
 
-const TRACK_STEPS = Tracking.STEPS;
+const TRACK_STEPS = ['Order placed','Picked up','In transit','Out for delivery','Delivered'];
 
 function showTab(t){
   document.querySelectorAll('.tab').forEach(el=>el.classList.remove('active'));
@@ -232,10 +228,6 @@ function openModal(id){
   if(id==='tracking'){
     const sel = document.getElementById('t-comp');
     sel.innerHTML = inventory.map(i=>`<option value="${i.id}">${i.name}</option>`).join('');
-    const courierSel = document.getElementById('t-courier');
-    courierSel.innerHTML = Tracking.COURIERS.map(c=>`<option>${c}</option>`).join('');
-    const statusSel = document.getElementById('t-status');
-    statusSel.innerHTML = Tracking.STEPS.map(s=>`<option>${s}</option>`).join('');
   }
   document.getElementById('modal-'+id).classList.add('open');
 }
@@ -270,13 +262,12 @@ function addTracking(){
   if(!tid){alert('Enter tracking ID');return;}
   const comp=inventory.find(i=>i.id===compId);
   if(comp){
-    comp.tracking=Tracking.newTracking({
+    comp.tracking={
       courier:document.getElementById('t-courier').value,
-      trackingId:tid,
+      id:tid,
       status:document.getElementById('t-status').value,
       expected:document.getElementById('t-date').value
-    });
-    comp.tracking.id=tid; // keep legacy field used by UI (trackBadge/pipeline) in sync
+    };
   }
   document.getElementById('t-id').value='';
   closeModal('tracking');
@@ -450,14 +441,6 @@ function renderTracking(c){
             <div class="step-label ${idx<=statusIdx?'done':''}">${s}</div>
           </div>`).join('')}
       </div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
-        <select id="status-sel-${i.id}" class="btn-sm" style="padding:5px 8px;border-radius:6px;border:1px solid #d0d0d0;font-family:inherit">
-          ${TRACK_STEPS.map(s=>`<option ${s===t.status?'selected':''}>${s}</option>`).join('')}
-        </select>
-        <button class="btn btn-sm" onclick="manualStatusUpdate(${i.id})">Update status</button>
-        <button class="btn btn-sm" onclick="refreshLiveStatus(${i.id})" title="${Tracking.CONFIG.enabled?'Pulls live status from courier API':'Live tracking not configured yet — see tracking.js'}">🔄 Refresh live status</button>
-        ${!Tracking.CONFIG.enabled?'<span style="font-size:10px;color:#999">(manual mode — add Shiprocket API key in tracking.js to enable)</span>':''}
-      </div>
     </div>`;
   }).join('')}
   ${inventory.filter(i=>!i.tracking).length>0?`
@@ -476,39 +459,10 @@ function openTrackingFor(id){
   setTimeout(()=>{document.getElementById('t-comp').value=id;},100);
 }
 
-function manualStatusUpdate(id){
-  const comp=inventory.find(i=>i.id===id);
-  if(!comp||!comp.tracking)return;
-  const sel=document.getElementById('status-sel-'+id);
-  Tracking.updateStatus(comp.tracking,sel.value);
-  showTab('tracking');
-}
-
-async function refreshLiveStatus(id){
-  const comp=inventory.find(i=>i.id===id);
-  if(!comp||!comp.tracking)return;
-  if(!Tracking.CONFIG.enabled){
-    alert('Live tracking is not configured yet.\n\nThis runs in manual-update mode until you add a Shiprocket API key + proxy URL in tracking.js (see CONFIG at the top of that file).');
-    return;
-  }
-  const status=await Tracking.fetchLiveStatus(comp.tracking.trackingId||comp.tracking.id,comp.tracking.courier);
-  if(status){
-    Tracking.updateStatus(comp.tracking,status);
-    comp.tracking.autoTracked=true;
-    showTab('tracking');
-  } else {
-    alert('Could not fetch live status — check your API key/proxy, or update manually.');
-  }
-}
-
 let currentDocType='fund';
-const DOCX_TYPE_MAP={fund:'fund-approval',quotation:'quotation',payment:'payment-receipt',gem:'non-gem'};
 function renderDocs(c){
   c.innerHTML=`
-  <div class="section-header">
-    <span class="section-title" style="margin-bottom:0">📄 Documents &amp; one-click print</span>
-    <button class="btn btn-sm" onclick="downloadAllDocx()">📁 Download all (.docx + .zip)</button>
-  </div>
+  <div class="section-title" style="margin-bottom:14px">📄 Documents &amp; one-click print</div>
   <div class="tabs-inner">
     <button class="tab-inner active" onclick="switchDoc(this,'fund')">Fund approval</button>
     <button class="tab-inner" onclick="switchDoc(this,'quotation')">Quotation</button>
@@ -529,43 +483,6 @@ function switchDoc(el,type){
 
 function today(){return new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});}
 function refNo(prefix){return prefix+'-2026-'+String(Math.floor(Math.random()*899)+100).padStart(3,'0');}
-
-// Map this app's inventory item shape to the shape DocGen.js expects
-function toDocGenComponents(){
-  return inventory.map(i=>({
-    name:i.name,
-    qty:i.qty,
-    unitPrice:i.price,
-    vendor:i.vendor,
-    invoiceNo:i.invoice,
-    paymentStatus:i.payment,
-    gemStatus:i.gem,
-    itemType:'Non-Recurring',
-    gemSearchRef:''
-  }));
-}
-
-let docMeta={piName:'',projectTitle:'',projectNo:'',labName:'WeRoCon Lab'};
-
-async function downloadDocx(type){
-  try{
-    const filenames={'fund-approval':'Fund_Approval','quotation':'Quotation_Comparison','non-gem':'Non_GeM_Certificate','payment-receipt':'Payment_Receipt'};
-    const stamp=new Date().toISOString().split('T')[0];
-    await DocGen.downloadOne(type,docMeta,toDocGenComponents(),`${filenames[type]}_${stamp}.docx`);
-  }catch(e){
-    console.error(e);
-    alert('Could not generate .docx — '+e.message);
-  }
-}
-
-async function downloadAllDocx(){
-  try{
-    await DocGen.downloadBundle(docMeta,toDocGenComponents());
-  }catch(e){
-    console.error(e);
-    alert('Could not generate bundle — '+e.message);
-  }
-}
 
 function renderDoc(type){
   const area=document.getElementById('doc-area');
@@ -691,7 +608,6 @@ function renderDoc(type){
   area.innerHTML = html + `
   <div class="print-bar">
     <button class="btn btn-print" onclick="printDoc()">🖨️ Print / Save as PDF</button>
-    ${DOCX_TYPE_MAP[type]?`<button class="btn btn-primary" onclick="downloadDocx('${DOCX_TYPE_MAP[type]}')">📁 Download as Word (.docx)</button>`:''}
     <button class="btn" onclick="alert('To customize template: note what changes you want and ask Claude to update the template for your department letterhead, logo, and fields.')">✏️ Customize template</button>
   </div>`;
 }
