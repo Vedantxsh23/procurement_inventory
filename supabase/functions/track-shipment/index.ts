@@ -52,12 +52,19 @@ function toCourierSlug(courierName) {
 // so if statuses come through unmapped (falling to 'Order placed' by
 // default), check that column in Supabase and extend the mapping below.
 function mapStatus(raw) {
-  const s = JSON.stringify(raw || {}).toUpperCase();
+  const data = raw?.data || {};
+  const s = (
+    (data.MostRecentStatus || '') + ' ' +
+    (data.ShipmentState || '') + ' ' +
+    (data.Checkpoints?.[0]?.Activity || '') + ' ' +
+    (data.Checkpoints?.[0]?.CheckpointState || '')
+  ).toUpperCase();
+
   if (s.includes('DELIVERED')) return 'Delivered';
   if (s.includes('OUT FOR DELIVERY') || s.includes('OUT_FOR_DELIVERY')) return 'Out for delivery';
-  if (s.includes('IN TRANSIT') || s.includes('IN_TRANSIT') || s.includes('TRANSIT') || s.includes('SHIPPED')) return 'In transit';
-  if (s.includes('PICKED') || s.includes('PICKUP') || s.includes('PICKED_UP')) return 'Picked up';
-  if (s.includes('PLACED') || s.includes('BOOKED') || s.includes('MANIFEST')) return 'Order placed';
+  if (s.includes('TRANSIT') || s.includes('SHIPPED')) return 'In transit';
+  if (s.includes('PICKED') || s.includes('PICKUP')) return 'Picked up';
+  if (s.includes('BOOKED') || s.includes('RECEIVED') || s.includes('MANIFEST') || s.includes('PLACED')) return 'Order placed';
   return 'Order placed';
 }
 
