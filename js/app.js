@@ -136,7 +136,62 @@ async function renderDashboard() {
               ${pillForTracking(trackMap[c.id])}
             </div>
           </div>`).join('')}</div>`}
+    </section>
+    ${renderReimbursementSection()}`;
+}
+
+// ---------------- REIMBURSEMENT ----------------
+function reimbursementCandidates() {
+  return componentsCache.filter(c => c.payment_mode === 'Paid by Saurav');
+}
+
+function renderReimbursementSection() {
+  const list = reimbursementCandidates();
+  if (list.length === 0) return '';
+
+  return `
+    <section class="section">
+      <div class="head"><h2>Reimbursement status</h2></div>
+      <div class="steps">
+        ${list.map(c => {
+          const status = c.payment_status;
+          let body = '';
+
+          if (status === 'Not applied yet') {
+            body = `
+              <span class="pill amber">Reminder: reimbursement not applied</span>
+              <button class="btn" onclick="setReimbursementStatus(${c.id}, 'Applied for reimbursement')">Mark as applied</button>`;
+          } else if (status === 'Applied for reimbursement') {
+            body = `
+              <span class="pill blue">Applied — awaiting confirmation</span>
+              <span style="font-size:12px;color:var(--muted,#666)">Got the reimbursement?</span>
+              <button class="btn primary" onclick="setReimbursementStatus(${c.id}, 'Got the reimbursement')">Yes</button>
+              <button class="btn" onclick="setReimbursementStatus(${c.id}, 'Not applied yet')">Not yet</button>`;
+          } else if (status === 'Got the reimbursement') {
+            body = `<span class="pill green">Reimbursement received</span>`;
+          } else {
+            body = `<span class="pill gray">${status || '—'}</span>`;
+          }
+
+          return `
+            <div class="step">
+              <div class="num">₹</div>
+              <div>
+                <h3>${c.name}</h3>
+                <p>${fmtRs(c.qty * c.unit_price)} · ${c.vendor || 'No vendor'}</p>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${body}</div>
+            </div>`;
+        }).join('')}
+      </div>
     </section>`;
+}
+
+async function setReimbursementStatus(id, newStatus) {
+  await DB.updateComponent(id, { paymentStatus: newStatus });
+  await refreshComponents();
+  toast(newStatus === 'Got the reimbursement' ? 'Marked as reimbursed 🎉' : 'Status updated');
+  showTab('dashboard');
 }
 
 // ---------------- ADD COMPONENT ----------------
