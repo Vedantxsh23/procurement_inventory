@@ -140,19 +140,23 @@ async function renderDashboard() {
 }
 
 // ---------------- ADD COMPONENT ----------------
+function rdProjectNo(itemType) {
+  return `IITJ/R&D/FS/${itemType}/2025-26/`;
+}
+
 function renderAddComponent() {
   $('#app').innerHTML = `
     <section class="hero">
-      <div><h1>Enter component</h1><p>Add purchase details and upload the vendor quotation(s). You'll generate the fund approval next.</p></div>
+      <div><h1>Enter component</h1><p>Add purchase details and upload the invoice. You'll generate the fund approval next.</p></div>
     </section>
     <div class="card">
       <div class="formgrid">
-        <div class="field"><label>Name of PI *</label><input id="f-pi" placeholder="Dr. Saurav Kumar"></div>
-        <div class="field"><label>Project title *</label><input id="f-project" value="${APP_CONFIG.PROJECT_TITLE_DEFAULT}"></div>
-        <div class="field"><label>R&D project no. *</label><input id="f-projectno" placeholder="IITJ/R&D/..."></div>
+        <div class="field"><label>Name of PI</label><input id="f-pi" value="Dr. Saurav Kumar" readonly></div>
+        <div class="field"><label>Project title</label><input id="f-project" value="Wearable Robotics &amp; Control Laboratory" readonly></div>
+        <div class="field"><label>R&D project no.</label><input id="f-projectno" value="${rdProjectNo('Non-Recurring')}" readonly></div>
 
         <div class="field"><label>Item classification</label>
-          <select id="f-type"><option value="Non-Recurring">Non Recurring (NR)</option><option value="Recurring">Recurring (R)</option></select>
+          <select id="f-type" onchange="onItemTypeChange()"><option value="Non-Recurring">Non Recurring (NR)</option><option value="Recurring">Recurring (R)</option></select>
         </div>
         <div class="field"><label>Component / item name *</label><input id="f-name" placeholder="e.g. BLDC motor"></div>
         <div class="field"><label>Category</label>
@@ -166,28 +170,57 @@ function renderAddComponent() {
         <div class="field"><label>GeM status</label>
           <select id="f-gem"><option>Not checked</option><option>Available on GeM</option><option>Non-GeM certified</option></select>
         </div>
-        <div class="field"><label>Payment status</label>
-          <select id="f-paystatus"><option>Pending</option><option>Pre-delivery paid</option><option>Post-delivery paid</option><option>PO raised</option><option>Applied for reimbursement</option><option>Got the reimbursement</option></select>
+        <div class="field"><label>Payment mode</label>
+          <select id="f-paymode" onchange="onPayModeChange()">
+            <option value="Paid by Saurav">Paid by Saurav</option>
+            <option value="By Purchase Order (P.O.)">By Purchase Order (P.O.)</option>
+            <option value="By email confirmation">By email confirmation</option>
+          </select>
         </div>
-        <div class="field"><label>Payment method</label>
-          <select id="f-paymethod"><option>Not selected</option><option>UPI</option><option>Bank transfer / NEFT</option><option>Credit / debit card</option><option>Cash</option><option>Purchase Order</option></select>
+        <div class="field" id="f-paymethod-wrap"><label>Payment method</label>
+          <select id="f-paymethod"><option>Cash</option><option>Credit card</option><option>Debit card</option><option>UPI</option><option>Bank transfer</option></select>
+        </div>
+
+        <div class="field"><label>Payment status</label>
+          <select id="f-paystatus"></select>
         </div>
 
         <div class="field full"><label>Remarks / specifications</label><textarea id="f-remarks" placeholder="Technical specs, purpose, notes..."></textarea></div>
-        <div class="field full"><label>Quotation file(s)</label><input id="f-quote-files" type="file" accept=".pdf,image/*" multiple></div>
+        <div class="field full"><label>Invoice file</label><input id="f-invoice-file" type="file" accept=".pdf,image/*"></div>
       </div>
       <div class="actions">
         <button class="btn" onclick="showTab('dashboard')">Cancel</button>
         <button class="btn primary" onclick="saveComponent()">Save component</button>
       </div>
     </div>`;
+  onPayModeChange();
+}
+
+function onItemTypeChange() {
+  $('#f-projectno').value = rdProjectNo($('#f-type').value);
+}
+
+const PAY_STATUS_OPTIONS = {
+  'Paid by Saurav': ['Applied for reimbursement', 'Got the reimbursement', 'Not applied yet'],
+  'By Purchase Order (P.O.)': ['Payment done by R&D', 'Not done'],
+  'By email confirmation': ['Payment done by R&D', 'Not done']
+};
+
+function onPayModeChange() {
+  const mode = $('#f-paymode').value;
+  const methodWrap = $('#f-paymethod-wrap');
+  methodWrap.style.display = (mode === 'Paid by Saurav') ? '' : 'none';
+
+  const statusSel = $('#f-paystatus');
+  statusSel.innerHTML = PAY_STATUS_OPTIONS[mode].map(s => `<option>${s}</option>`).join('');
 }
 
 async function saveComponent() {
-  const required = ['f-pi', 'f-project', 'f-projectno', 'f-name', 'f-price'];
+  const required = ['f-name', 'f-price'];
   for (const id of required) {
     if (!$('#' + id).value.trim()) { toast('Please complete all required (*) fields'); return; }
   }
+  const payMode = $('#f-paymode').value;
   const comp = await DB.addComponent({
     name: $('#f-name').value.trim(),
     category: $('#f-category').value,
@@ -196,8 +229,9 @@ async function saveComponent() {
     unitPrice: $('#f-price').value,
     vendor: $('#f-vendor').value.trim(),
     gemStatus: $('#f-gem').value,
+    paymentMode: payMode,
+    paymentMethod: payMode === 'Paid by Saurav' ? $('#f-paymethod').value : '',
     paymentStatus: $('#f-paystatus').value,
-    paymentMethod: $('#f-paymethod').value,
     remarks: $('#f-remarks').value.trim(),
     piName: $('#f-pi').value.trim(),
     projectTitle: $('#f-project').value.trim(),
@@ -205,9 +239,9 @@ async function saveComponent() {
     createdBy: Auth.role()
   });
 
-  const files = $('#f-quote-files').files;
-  for (const file of files) {
-    await DB.uploadFile(comp.id, 'quotation', file, Auth.role());
+  const invoiceFile = $('#f-invoice-file').files[0];
+  if (invoiceFile) {
+    await DB.uploadFile(comp.id, 'invoice', invoiceFile, Auth.role());
   }
 
   await refreshComponents();
