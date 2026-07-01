@@ -26,6 +26,7 @@ const DB = (() => {
       invoice_no: comp.invoiceNo || '',
       payment_status: comp.paymentStatus || 'Pending',
       payment_method: comp.paymentMethod || 'Not selected',
+      payment_mode: comp.paymentMode || 'Paid by Saurav',
       remarks: comp.remarks || '',
       pi_name: comp.piName || '',
       project_title: comp.projectTitle || '',
@@ -43,6 +44,7 @@ const DB = (() => {
       unitPrice: 'unit_price', vendor: 'vendor', gemStatus: 'gem_status',
       gemSearchRef: 'gem_search_ref', invoiceNo: 'invoice_no',
       paymentStatus: 'payment_status', paymentMethod: 'payment_method',
+      paymentMode: 'payment_mode',
       remarks: 'remarks', piName: 'pi_name', projectTitle: 'project_title',
       projectNo: 'project_no'
     };
