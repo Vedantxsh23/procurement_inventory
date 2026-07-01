@@ -325,9 +325,13 @@ async function renderInventory() {
   $('#app').innerHTML = `
     <div class="head">
       <h2>Inventory</h2>
-      <div>${viewOnly ? '<span class="pill gray">View only</span>' : `<button class="btn primary" onclick="showTab('add')">+ Add component</button>`}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+        ${viewOnly ? '<span class="pill gray">View only</span>' : `
+          <button class="btn" onclick="openQuickAddModal()">+ Add existing item (already purchased)</button>
+          <button class="btn primary" onclick="showTab('add')">+ Add component</button>`}
+      </div>
     </div>
-    <div class="notice">Data is stored in Supabase — shared live across every device, and deletions are permanent.</div>
+    <div class="notice">Data is stored in Supabase — shared live across every device, and deletions are permanent. Use "Add existing item" for stock that's already been bought and fully settled — it skips fund approval &amp; document generation and lands straight in Inventory. Use "Edit" on any row to change details or remarks at any time.</div>
     <div class="tablewrap section">
       <table>
         <thead><tr>
@@ -345,7 +349,7 @@ async function renderInventory() {
             <td>${pillForPayment(c.payment_status)}</td>
             <td>${c.invoice_no || '<span class="muted">Pending</span>'}</td>
             <td class="muted" style="font-size:11px;max-width:160px">${c.remarks || '—'}</td>
-            ${viewOnly ? '' : `<td><button class="btn danger" onclick="confirmDeleteComponent(${c.id}, '${c.name.replace(/'/g, "\\'")}')">Delete</button></td>`}
+            ${viewOnly ? '' : `<td style="display:flex;gap:6px;white-space:nowrap"><button class="btn" onclick="openEditComponentModal(${c.id})">Edit</button><button class="btn danger" onclick="confirmDeleteComponent(${c.id}, '${c.name.replace(/'/g, "\\'")}')">Delete</button></td>`}
           </tr>`).join('') || `<tr><td colspan="9" class="empty">No components yet</td></tr>`}
         </tbody>
       </table>
@@ -357,6 +361,140 @@ async function confirmDeleteComponent(id, name) {
   await DB.deleteComponent(id);
   await refreshComponents();
   toast('Deleted permanently');
+  showTab('inventory');
+}
+
+// ---------------- EDIT COMPONENT (available any time, from Inventory) ----------------
+function openEditComponentModal(id) {
+  const c = componentsCache.find(x => x.id === id);
+  if (!c) return;
+  $('#modal-host').innerHTML = `
+    <div class="modal open"><div class="modalbox">
+      <h2>Edit — ${c.name}</h2>
+      <div class="formgrid">
+        <div class="field"><label>Component / item name *</label><input id="e-name" value="${(c.name || '').replace(/"/g, '&quot;')}"></div>
+        <div class="field"><label>Category</label>
+          <select id="e-category">${['Motor', 'Bearing', 'Sensor', 'Cable', 'Drive / VFD', 'Other'].map(o => `<option ${c.category === o ? 'selected' : ''}>${o}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>Quantity *</label><input id="e-qty" type="number" min="1" value="${c.qty}"></div>
+        <div class="field"><label>Unit price (incl. all taxes) *</label><input id="e-price" type="number" min="0" value="${c.unit_price}"></div>
+        <div class="field"><label>Vendor</label><input id="e-vendor" value="${(c.vendor || '').replace(/"/g, '&quot;')}"></div>
+        <div class="field"><label>GeM status</label>
+          <select id="e-gem">${['Not checked', 'Available on GeM', 'Non-GeM certified'].map(o => `<option ${c.gem_status === o ? 'selected' : ''}>${o}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>Payment mode</label>
+          <select id="e-paymode" onchange="onEditPayModeChange()">
+            <option value="Paid by Saurav" ${c.payment_mode === 'Paid by Saurav' ? 'selected' : ''}>Paid by Saurav</option>
+            <option value="By Purchase Order (P.O.)" ${c.payment_mode === 'By Purchase Order (P.O.)' ? 'selected' : ''}>By Purchase Order (P.O.)</option>
+            <option value="By email confirmation" ${c.payment_mode === 'By email confirmation' ? 'selected' : ''}>By email confirmation</option>
+          </select>
+        </div>
+        <div class="field"><label>Payment status</label><select id="e-paystatus"></select></div>
+        <div class="field full"><label>Remarks / specifications</label><textarea id="e-remarks">${c.remarks || ''}</textarea></div>
+      </div>
+      <div class="actions">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn primary" onclick="saveEditComponent(${id})">Save changes</button>
+      </div>
+    </div></div>`;
+  onEditPayModeChange(c.payment_status);
+}
+
+function onEditPayModeChange(preselect) {
+  const mode = $('#e-paymode').value;
+  const sel = $('#e-paystatus');
+  sel.innerHTML = PAY_STATUS_OPTIONS[mode].map(s => `<option ${s === preselect ? 'selected' : ''}>${s}</option>`).join('');
+}
+
+async function saveEditComponent(id) {
+  if (!$('#e-name').value.trim()) { toast('Name is required'); return; }
+  await DB.updateComponent(id, {
+    name: $('#e-name').value.trim(),
+    category: $('#e-category').value,
+    qty: $('#e-qty').value,
+    unitPrice: $('#e-price').value,
+    vendor: $('#e-vendor').value.trim(),
+    gemStatus: $('#e-gem').value,
+    paymentMode: $('#e-paymode').value,
+    paymentStatus: $('#e-paystatus').value,
+    remarks: $('#e-remarks').value.trim()
+  });
+  closeModal();
+  await refreshComponents();
+  toast('Component updated');
+  showTab('inventory');
+}
+
+// ---------------- QUICK ADD (already-purchased item — straight into inventory, no procurement flow) ----------------
+function openQuickAddModal() {
+  $('#modal-host').innerHTML = `
+    <div class="modal open"><div class="modalbox">
+      <h2>Add existing item to inventory</h2>
+      <p class="muted" style="margin-top:-4px;font-size:12px">For stock that's already been bought and fully settled. This skips fund approval / documents and lands straight in Inventory.</p>
+      <div class="formgrid">
+        <div class="field"><label>Component / item name *</label><input id="q-name" placeholder="e.g. BLDC motor"></div>
+        <div class="field"><label>Category</label>
+          <select id="q-category"><option>Motor</option><option>Bearing</option><option>Sensor</option><option>Cable</option><option>Drive / VFD</option><option>Other</option></select>
+        </div>
+        <div class="field"><label>Quantity *</label><input id="q-qty" type="number" min="1" value="1"></div>
+        <div class="field"><label>Unit price (incl. all taxes) *</label><input id="q-price" type="number" min="0" placeholder="₹"></div>
+        <div class="field"><label>Vendor</label><input id="q-vendor"></div>
+        <div class="field"><label>GeM status</label>
+          <select id="q-gem"><option>Not checked</option><option>Available on GeM</option><option>Non-GeM certified</option></select>
+        </div>
+        <div class="field"><label>Payment mode</label>
+          <select id="q-paymode" onchange="onQuickPayModeChange()">
+            <option value="Paid by Saurav">Paid by Saurav</option>
+            <option value="By Purchase Order (P.O.)">By Purchase Order (P.O.)</option>
+            <option value="By email confirmation">By email confirmation</option>
+          </select>
+        </div>
+        <div class="field"><label>Payment status</label><select id="q-paystatus"></select></div>
+        <div class="field full"><label>Remarks / specifications</label><textarea id="q-remarks" placeholder="Editable anytime later from Inventory → Edit"></textarea></div>
+      </div>
+      <div class="actions">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn primary" onclick="saveQuickAdd()">Add to inventory</button>
+      </div>
+    </div></div>`;
+  onQuickPayModeChange();
+}
+
+function onQuickPayModeChange() {
+  const mode = $('#q-paymode').value;
+  const sel = $('#q-paystatus');
+  // default straight to the "done" end of whichever pipeline is selected,
+  // since the item is already fully bought and settled
+  const doneStatus = {
+    'Paid by Saurav': 'Got the reimbursement',
+    'By Purchase Order (P.O.)': 'Payment done by R&D',
+    'By email confirmation': 'Payment done by R&D'
+  }[mode];
+  sel.innerHTML = PAY_STATUS_OPTIONS[mode].map(s => `<option ${s === doneStatus ? 'selected' : ''}>${s}</option>`).join('');
+}
+
+async function saveQuickAdd() {
+  if (!$('#q-name').value.trim() || !$('#q-price').value) { toast('Please complete all required (*) fields'); return; }
+  await DB.addComponent({
+    name: $('#q-name').value.trim(),
+    category: $('#q-category').value,
+    itemType: 'Non-Recurring',
+    qty: $('#q-qty').value,
+    unitPrice: $('#q-price').value,
+    vendor: $('#q-vendor').value.trim(),
+    gemStatus: $('#q-gem').value,
+    paymentMode: $('#q-paymode').value,
+    paymentMethod: '',
+    paymentStatus: $('#q-paystatus').value,
+    remarks: $('#q-remarks').value.trim(),
+    piName: 'Dr. Saurav Kumar',
+    projectTitle: 'Wearable Robotics & Control Laboratory',
+    projectNo: rdProjectNo('Non-Recurring'),
+    createdBy: Auth.email()
+  });
+  closeModal();
+  await refreshComponents();
+  toast('Added directly to inventory');
   showTab('inventory');
 }
 
