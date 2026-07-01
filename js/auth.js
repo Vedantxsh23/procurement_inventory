@@ -1,41 +1,89 @@
 /* WeRoCon Lab — Procurement & Inventory System
-   Access gate.
-   IMPORTANT — read this if you're editing config:
-   This is a STATIC site with no server, so this is NOT real authentication.
-   It's a shared password that hides the UI until entered. Anyone who has
-   the password (or who opens browser devtools) can get in. It stops casual
-   access, not a determined person. Good enough for a small lab tool;
-   not for sensitive data. When you're ready for real per-person logins
-   and shared live data, swap this for Supabase Auth (see README.md).
+   Access gate — Supabase Auth (email + password).
+
+   This replaces the old shared-password gate. Real per-person accounts,
+   backed by Supabase Auth, with the session persisted by Supabase itself
+   (it uses localStorage under the hood) so people stay signed in across
+   reloads.
+
+   ROLE / VIEW-ONLY:
+   Supabase Auth doesn't have a built-in "role" field, so we read it from
+   the user's metadata (set when the account is created / invited).
+   In the Supabase dashboard: Authentication -> Users -> select a user ->
+   "User Metadata" and add:
+     { "role": "Professor (view)" }
+   Any user WITHOUT that metadata is treated as full access ("Lab member").
+   If you'd rather manage roles in a table instead of user metadata, see
+   the note above getRole() below.
+
+   Requires: config.js loaded first (creates the `sb` Supabase client),
+   and Email/Password sign-in enabled in Supabase Auth settings, with the
+   relevant users created there (Authentication -> Users -> Add user).
 */
-const AUTH_KEY = 'werocon_auth_ok';
-// Change these to your own values before publishing.
-// 'Sauravk' -> full access (add/edit/delete).
-// 'SauravView' -> view-only, for anyone who should see status but not change it.
-const ACCESS_CODES = {
-  'Sauravk': 'Lab member',
-  'SauravView': 'Professor (view)'
-};
+
 const Auth = (() => {
-  function isUnlocked() {
-    return sessionStorage.getItem(AUTH_KEY) !== null;
+  let currentUser = null; // Supabase auth user object, or null
+
+  function getRole() {
+    // Reads role out of user_metadata. Swap this for a DB lookup
+    // (e.g. a `profiles` table keyed by user id) if you'd rather manage
+    // roles there instead of in Supabase Auth's metadata.
+    const meta = currentUser?.user_metadata || {};
+    return meta.role || 'Lab member';
   }
-  function role() {
-    return sessionStorage.getItem(AUTH_KEY) || null;
-  }
-  function tryUnlock(code) {
-    const match = ACCESS_CODES[code];
-    if (match) {
-      sessionStorage.setItem(AUTH_KEY, match);
-      return true;
+
+  async function init() {
+    const { data, error } = await sb.auth.getSession();
+    if (error) {
+      console.error('Auth.init session error:', error);
+      return;
     }
-    return false;
+    currentUser = data?.session?.user || null;
+
+    // Keep currentUser in sync if the session changes in another tab,
+    // gets refreshed, or expires.
+    sb.auth.onAuthStateChange((_event, session) => {
+      currentUser = session?.user || null;
+    });
   }
-  function lock() {
-    sessionStorage.removeItem(AUTH_KEY);
+
+  function isUnlocked() {
+    return !!currentUser;
   }
+
+  function email() {
+    return currentUser?.email || null;
+  }
+
+  function role() {
+    if (!currentUser) return null;
+    return getRole();
+  }
+
   function isViewOnly() {
     return role() === 'Professor (view)';
   }
-  return { isUnlocked, tryUnlock, lock, role, isViewOnly };
+
+  async function tryUnlock(emailInput, password) {
+    if (!emailInput || !password) {
+      return { ok: false, message: 'Enter both email and password.' };
+    }
+    const { data, error } = await sb.auth.signInWithPassword({
+      email: emailInput.trim(),
+      password
+    });
+    if (error) {
+      return { ok: false, message: error.message || 'Sign in failed.' };
+    }
+    currentUser = data?.user || null;
+    return { ok: true };
+  }
+
+  async function lock() {
+    const { error } = await sb.auth.signOut();
+    if (error) console.error('Auth.lock signOut error:', error);
+    currentUser = null;
+  }
+
+  return { init, isUnlocked, tryUnlock, lock, email, role, isViewOnly };
 })();
