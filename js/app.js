@@ -18,26 +18,41 @@ function renderGate() {
       <img src="assets/logo.png" alt="WeRoCon Lab logo" class="gate-logo">
       <h1>WeRoCon Lab</h1>
       <p class="muted">Procurement &amp; Inventory System</p>
-      <input id="gate-code" type="password" placeholder="Access code" autocomplete="off">
+      <input id="gate-email" type="email" placeholder="Email" autocomplete="username">
+      <input id="gate-password" type="password" placeholder="Password" autocomplete="current-password">
       <div id="gate-error" class="gate-error"></div>
-      <button class="btn primary" style="width:100%" onclick="tryGateUnlock()">Enter</button>
-      <p class="gate-note">Shared lab access. This is a lightweight gate, not per-person login — see README for upgrading to real accounts.</p>
+      <button class="btn primary" style="width:100%" id="gate-submit" onclick="tryGateUnlock()">Sign in</button>
+      <p class="gate-note">Sign in with your lab account. Ask the lab admin if you need one created.</p>
     </div>`;
-  $('#gate-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') tryGateUnlock(); });
+  const onEnter = (e) => { if (e.key === 'Enter') tryGateUnlock(); };
+  $('#gate-email').addEventListener('keydown', onEnter);
+  $('#gate-password').addEventListener('keydown', onEnter);
 }
 
-function tryGateUnlock() {
-  const code = $('#gate-code').value;
-  if (Auth.tryUnlock(code)) {
+async function tryGateUnlock() {
+  const email = $('#gate-email').value;
+  const password = $('#gate-password').value;
+  const btn = $('#gate-submit');
+  const errBox = $('#gate-error');
+  errBox.textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+
+  const result = await Auth.tryUnlock(email, password);
+
+  btn.disabled = false;
+  btn.textContent = 'Sign in';
+
+  if (result.ok) {
     boot();
   } else {
-    $('#gate-error').textContent = 'Incorrect access code.';
+    errBox.textContent = result.message || 'Sign in failed.';
   }
 }
 
-function logout() {
-  Auth.lock();
+async function logout() {
   if (unsubscribeRealtime) unsubscribeRealtime();
+  await Auth.lock();
   location.reload();
 }
 
@@ -45,7 +60,7 @@ function logout() {
 async function boot() {
   $('#gate').classList.add('hidden');
   $('#shell').classList.remove('hidden');
-  $('#role-label').textContent = Auth.role();
+  $('#role-label').textContent = Auth.email() || Auth.role();
   if (Auth.isViewOnly()) document.body.classList.add('view-only');
 
   await refreshComponents();
@@ -291,12 +306,12 @@ async function saveComponent() {
     piName: $('#f-pi').value.trim(),
     projectTitle: $('#f-project').value.trim(),
     projectNo: $('#f-projectno').value.trim(),
-    createdBy: Auth.role()
+    createdBy: Auth.email()
   });
 
   const invoiceFile = $('#f-invoice-file').files[0];
   if (invoiceFile) {
-    await DB.uploadFile(comp.id, 'invoice', invoiceFile, Auth.role());
+    await DB.uploadFile(comp.id, 'invoice', invoiceFile, Auth.email());
   }
 
   await refreshComponents();
@@ -494,7 +509,7 @@ async function downloadSingle(type) {
   const stamp = new Date().toISOString().split('T')[0];
   const names = { 'fund-approval': 'Fund_Approval', quotation: 'Quotation_Comparison', 'non-gem': 'Non_GeM_Certificate', 'payment-receipt': 'Payment_Receipt' };
   await DocGen.downloadOne(type, meta, sel.map(toDocGenShape), `${names[type]}_${stamp}.docx`);
-  await DB.logDocument(type, DocGen.refNo(type.slice(0, 2).toUpperCase()), activeDocComponentIds, Auth.role());
+  await DB.logDocument(type, DocGen.refNo(type.slice(0, 2).toUpperCase()), activeDocComponentIds, Auth.email());
   toast('Downloaded');
 }
 
@@ -503,12 +518,13 @@ async function downloadBundleAll() {
   if (sel.length === 0) { toast('Select at least one component'); return; }
   const meta = metaFromSelection();
   await DocGen.downloadBundle(meta, sel.map(toDocGenShape));
-  await DB.logDocument('bundle', 'BUNDLE', activeDocComponentIds, Auth.role());
+  await DB.logDocument('bundle', 'BUNDLE', activeDocComponentIds, Auth.email());
   toast('Bundle downloaded');
 }
 
 // ---------------- INIT ----------------
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
+  await Auth.init();
   if (Auth.isUnlocked()) {
     boot();
   } else {
