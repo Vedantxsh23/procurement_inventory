@@ -574,6 +574,73 @@ const DocGen = (() => {
     });
   }
 
+  // ---------- 6. PROOF OF PAYMENT (COMPILED) ----------
+  // Lays every uploaded payment-proof image out in a 2-column grid so they
+  // land on as few pages as possible (e.g. 2 images -> one page).
+  function dataUrlToUint8Array(dataUrl) {
+    const base64 = dataUrl.split(',')[1];
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  function proofImageCell(name, dataUrl, width) {
+    let imagePara;
+    try {
+      const bytes = dataUrlToUint8Array(dataUrl);
+      imagePara = new D.Paragraph({
+        alignment: D.AlignmentType.CENTER,
+        children: [new D.ImageRun({ data: bytes, transformation: { width: 230, height: 170 } })]
+      });
+    } catch (e) {
+      imagePara = new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [new D.TextRun({ text: '(image could not be embedded)', italics: true, size: 16 })] });
+    }
+    return new D.TableCell({
+      borders: cellBorders,
+      width: { size: width, type: D.WidthType.DXA },
+      margins: { top: 80, bottom: 80, left: 80, right: 80 },
+      children: [
+        new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [new D.TextRun({ text: name, bold: true, size: 16 })], spacing: { after: 60 } }),
+        imagePara
+      ]
+    });
+  }
+
+  function buildProofOfPaymentDoc(meta, components) {
+    const withProof = (components || []).filter(c => c.paymentProofFile && c.paymentProofFile.dataUrl);
+    const colWidth = 4680; // half of 9360
+    const rows = [];
+    for (let i = 0; i < withProof.length; i += 2) {
+      const left = withProof[i];
+      const right = withProof[i + 1];
+      rows.push(new D.TableRow({
+        children: [
+          proofImageCell(left.name, left.paymentProofFile.dataUrl, colWidth),
+          right ? proofImageCell(right.name, right.paymentProofFile.dataUrl, colWidth) : cell('', { width: colWidth })
+        ]
+      }));
+    }
+    const table = new D.Table({
+      width: { size: 9360, type: D.WidthType.DXA },
+      columnWidths: [colWidth, colWidth],
+      rows: rows.length ? rows : [new D.TableRow({ children: [cell('No proof-of-payment images uploaded for the selected components.', { width: 9360 })] })]
+    });
+
+    return new D.Document({
+      styles: { default: { document: { run: { font: 'Arial', size: 20 } } } },
+      sections: [{
+        properties: { page: { size: { width: 12240, height: 15840 }, margin: { top: 800, bottom: 800, left: 800, right: 800 } } },
+        children: [
+          new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [new D.TextRun({ text: meta.labName || 'WeRoCon Lab', bold: true, size: 24 })] }),
+          new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [new D.TextRun({ text: 'Proof of Payment — Compiled', bold: true, size: 26 })], spacing: { after: 100 } }),
+          new D.Paragraph({ alignment: D.AlignmentType.RIGHT, children: [new D.TextRun({ text: `Ref No: ${refNo('PP')}   |   Date: ${todayStr()}`, italics: true, size: 18 })], spacing: { after: 200 } }),
+          table
+        ]
+      }]
+    });
+  }
+
   // ---------- triggers ----------
   function triggerDownload(blob, filename) {
     const url = URL.createObjectURL(blob);
@@ -593,6 +660,7 @@ const DocGen = (() => {
     else if (type === 'non-gem') doc = buildNonGemDoc(meta, components);
     else if (type === 'payment-receipt') doc = buildPaymentReceiptDoc(meta, components);
     else if (type === 'payment-form') doc = buildPaymentFormDoc(meta, components /* bills array in this case */);
+    else if (type === 'proof-of-payment') doc = buildProofOfPaymentDoc(meta, components);
     else throw new Error('Unknown doc type: ' + type);
     return await D.Packer.toBlob(doc);
   }
@@ -641,18 +709,37 @@ const DocGen = (() => {
       }
     }
 
-    // include any uploaded quotation / invoice files
+    // Compiled proof-of-payment doc — all uploaded payment-proof images laid
+    // out in a grid on as few pages as possible.
+    const withProof = components.filter(c => c.paymentProofFile && c.paymentProofFile.dataUrl);
+    if (withProof.length) {
+      const proofDoc = await generateBlob('proof-of-payment', meta, components);
+      zip.file(`Proof_of_Payment_Compiled_${stamp}.docx`, proofDoc);
+    }
+
+    // include every actually-uploaded quotation / invoice / payment-proof /
+    // non-GeM-certificate file, in its original format, so the bundle is
+    // truly "everything in one click"
     const uploadsFolder = zip.folder('Uploaded_Files');
     components.forEach(c => {
+      const safeName = c.name.replace(/[^a-z0-9]/gi, '_');
       (c.quotationFiles || []).forEach((f, idx) => {
         if (f.dataUrl) {
           const base64 = f.dataUrl.split(',')[1];
-          uploadsFolder.file(`${c.name.replace(/[^a-z0-9]/gi, '_')}_quote${idx + 1}_${f.name}`, base64, { base64: true });
+          uploadsFolder.file(`${safeName}_quote${idx + 1}_${f.name}`, base64, { base64: true });
         }
       });
       if (c.invoiceFile && c.invoiceFile.dataUrl) {
         const base64 = c.invoiceFile.dataUrl.split(',')[1];
-        uploadsFolder.file(`${c.name.replace(/[^a-z0-9]/gi, '_')}_invoice_${c.invoiceFile.name}`, base64, { base64: true });
+        uploadsFolder.file(`${safeName}_invoice_${c.invoiceFile.name}`, base64, { base64: true });
+      }
+      if (c.paymentProofFile && c.paymentProofFile.dataUrl) {
+        const base64 = c.paymentProofFile.dataUrl.split(',')[1];
+        uploadsFolder.file(`${safeName}_payment_proof_${c.paymentProofFile.name}`, base64, { base64: true });
+      }
+      if (c.nonGemFile && c.nonGemFile.dataUrl) {
+        const base64 = c.nonGemFile.dataUrl.split(',')[1];
+        uploadsFolder.file(`${safeName}_non_gem_certificate_${c.nonGemFile.name}`, base64, { base64: true });
       }
     });
 
