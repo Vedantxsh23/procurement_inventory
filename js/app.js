@@ -268,7 +268,9 @@ function renderAddComponent() {
         </div>
 
         <div class="field full"><label>Remarks / specifications</label><textarea id="f-remarks" placeholder="Technical specs, purpose, notes..."></textarea></div>
-        <div class="field full"><label>Invoice file</label><input id="f-invoice-file" type="file" accept=".pdf,image/*"></div>
+        <div class="field"><label>Invoice file</label><input id="f-invoice-file" type="file" accept=".pdf,image/*"></div>
+        <div class="field"><label>Proof of payment (image only)</label><input id="f-payment-proof-file" type="file" accept="image/*"></div>
+        <div class="field full"><label>Non-GeM certificate (if applicable)</label><input id="f-nongem-file" type="file" accept=".pdf,image/*"></div>
       </div>
       <div class="actions">
         <button class="btn" onclick="showTab('dashboard')">Cancel</button>
@@ -325,6 +327,14 @@ async function saveComponent() {
   const invoiceFile = $('#f-invoice-file').files[0];
   if (invoiceFile) {
     await DB.uploadFile(comp.id, 'invoice', invoiceFile, Auth.email());
+  }
+  const paymentProofFile = $('#f-payment-proof-file').files[0];
+  if (paymentProofFile) {
+    await DB.uploadFile(comp.id, 'payment_proof', paymentProofFile, Auth.email());
+  }
+  const nonGemFile = $('#f-nongem-file').files[0];
+  if (nonGemFile) {
+    await DB.uploadFile(comp.id, 'non_gem_certificate', nonGemFile, Auth.email());
   }
 
   await refreshComponents();
@@ -689,8 +699,10 @@ function renderDocuments() {
       <button class="btn" onclick="downloadSingle('quotation')">Quotation Comparison</button>
       <button class="btn" onclick="downloadSingle('non-gem')">Non-GeM Certificate</button>
       <button class="btn" onclick="downloadSingle('payment-receipt')">Payment Receipt</button>
+      <button class="btn" onclick="downloadSingle('proof-of-payment')">Proof of Payment (combined)</button>
+      <button class="btn" onclick="downloadSingle('payment-form')">Payment Reimbursement Form (draft)</button>
     </div>
-    <div class="notice">All four documents are generated client-side from your component data and download as .docx — editable in Word. The bundle button packages all applicable documents plus your uploaded quotation/invoice files into one .zip. Items added via "Add existing item" (already purchased) don't appear here.</div>`;
+    <div class="notice">All documents are generated client-side from your component data and download as .docx — editable in Word. "Proof of Payment (combined)" lays every uploaded payment-proof image out on as few pages as possible. "Payment Reimbursement Form" is a draft for now — bank details etc. will be wired up later. The bundle button packages every applicable document plus your actual uploaded invoice, payment-proof and non-GeM files into one .zip. Items added via "Add existing item" (already purchased) don't appear here.</div>`;
 }
 
 function toggleDocComponent(id, checked) {
@@ -719,17 +731,57 @@ function toDocGenShape(c) {
     invoiceNo: c.invoice_no, paymentStatus: c.payment_status,
     gemStatus: c.gem_status, gemSearchRef: c.gem_search_ref,
     itemType: c.item_type, remarks: c.remarks,
-    quotationFiles: [], invoiceFile: null
+    quotationFiles: [], invoiceFile: null, paymentProofFile: null, nonGemFile: null
   };
+}
+
+// Pulls each selected component's actually-uploaded invoice / payment-proof /
+// non-GeM-certificate files out of Storage (as base64) so they can be
+// embedded in generated docs or dropped straight into the bundle .zip.
+async function enrichWithFiles(components) {
+  const enriched = [];
+  for (const c of components) {
+    const files = await DB.listFiles(c.id);
+    const invoiceRec = files.find(f => f.file_type === 'invoice');
+    const proofRec = files.find(f => f.file_type === 'payment_proof');
+    const nonGemRec = files.find(f => f.file_type === 'non_gem_certificate');
+
+    const invoiceFile = invoiceRec ? { name: invoiceRec.file_name, dataUrl: await DB.downloadFileAsDataUrl(invoiceRec.storage_path) } : null;
+    const paymentProofFile = proofRec ? { name: proofRec.file_name, dataUrl: await DB.downloadFileAsDataUrl(proofRec.storage_path) } : null;
+    const nonGemFile = nonGemRec ? { name: nonGemRec.file_name, dataUrl: await DB.downloadFileAsDataUrl(nonGemRec.storage_path) } : null;
+
+    enriched.push({ ...toDocGenShape(c), invoiceFile, paymentProofFile, nonGemFile });
+  }
+  return enriched;
+}
+
+// Rough draft shape for the R&D/Acct-02 "Payment Reimbursement" form —
+// bank details / relevancy etc. are placeholders for now, to be wired up later.
+function toBillsShape(components) {
+  return components.filter(c => c.invoiceNo).map(c => ({
+    invoiceNo: c.invoiceNo,
+    date: '',
+    itemDetails: c.name,
+    relevancy: 'Project requirement',
+    amount: c.qty * c.unitPrice,
+    stockRegisterPage: ''
+  }));
 }
 
 async function downloadSingle(type) {
   const sel = selectedComponents();
   if (sel.length === 0) { toast('Select at least one component'); return; }
+  toast('Preparing document...');
   const meta = metaFromSelection();
   const stamp = new Date().toISOString().split('T')[0];
-  const names = { 'fund-approval': 'Fund_Approval', quotation: 'Quotation_Comparison', 'non-gem': 'Non_GeM_Certificate', 'payment-receipt': 'Payment_Receipt' };
-  await DocGen.downloadOne(type, meta, sel.map(toDocGenShape), `${names[type]}_${stamp}.docx`);
+  const names = {
+    'fund-approval': 'Fund_Approval', quotation: 'Quotation_Comparison',
+    'non-gem': 'Non_GeM_Certificate', 'payment-receipt': 'Payment_Receipt',
+    'proof-of-payment': 'Proof_of_Payment', 'payment-form': 'Payment_Reimbursement_Form_DRAFT'
+  };
+  const enriched = await enrichWithFiles(sel);
+  const payload = type === 'payment-form' ? toBillsShape(enriched) : enriched;
+  await DocGen.downloadOne(type, meta, payload, `${names[type]}_${stamp}.docx`);
   await DB.logDocument(type, DocGen.refNo(type.slice(0, 2).toUpperCase()), activeDocComponentIds, Auth.email());
   toast('Downloaded');
 }
@@ -737,8 +789,10 @@ async function downloadSingle(type) {
 async function downloadBundleAll() {
   const sel = selectedComponents();
   if (sel.length === 0) { toast('Select at least one component'); return; }
+  toast('Preparing bundle...');
   const meta = metaFromSelection();
-  await DocGen.downloadBundle(meta, sel.map(toDocGenShape));
+  const enriched = await enrichWithFiles(sel);
+  await DocGen.downloadBundle(meta, enriched);
   await DB.logDocument('bundle', 'BUNDLE', activeDocComponentIds, Auth.email());
   toast('Bundle downloaded');
 }
