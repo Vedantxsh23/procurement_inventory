@@ -98,6 +98,20 @@ const DB = (() => {
     return true;
   }
 
+  // Pulls an uploaded file back out of Storage and returns it as a base64
+  // data URL, so it can be embedded into a generated .docx or dropped
+  // straight into the bundle .zip. Used by the Documents tab.
+  async function downloadFileAsDataUrl(storagePath) {
+    const { data, error } = await sb.storage.from(APP_CONFIG.STORAGE_BUCKET).download(storagePath);
+    if (error) { console.error(error); return null; }
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(data);
+    });
+  }
+
   // ---------- tracking ----------
   async function getTracking(componentId) {
     const { data, error } = await sb.from('shipment_tracking').select('*').eq('component_id', componentId).maybeSingle();
@@ -169,7 +183,7 @@ const DB = (() => {
 
   return {
     listComponents, addComponent, updateComponent, deleteComponent,
-    uploadFile, getFileUrl, listFiles, deleteFile,
+    uploadFile, getFileUrl, listFiles, deleteFile, downloadFileAsDataUrl,
     getTracking, listAllTracking, upsertTracking, syncTrackingLive,
     logDocument, subscribeToChanges
   };
