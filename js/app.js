@@ -124,10 +124,12 @@ function pillForTracking(t) {
 }
 
 async function renderDashboard() {
-  const comps = componentsCache;
+  // Quick-added (already purchased & settled) items are excluded from the
+  // dashboard entirely — they only live in Inventory.
+  const comps = componentsCache.filter(c => !isQuickAddItem(c));
   const total = comps.reduce((s, c) => s + c.qty * c.unit_price, 0);
   const paid = comps.filter(c => (c.payment_status || '').toLowerCase().includes('paid') || c.payment_status === 'Got the reimbursement').length;
-  const trackingRows = await DB.listAllTracking();
+  const trackingRows = (await DB.listAllTracking()).filter(t => comps.some(c => c.id === t.component_id));
   const trackMap = {};
   trackingRows.forEach(t => trackMap[t.component_id] = t);
 
