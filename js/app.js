@@ -11,6 +11,7 @@ let componentsCache = [];
 let activeDocComponentIds = [];
 let unsubscribeRealtime = null;
 let inventorySearchTerm = '';
+let inventorySelectedIds = new Set();
 
 // ---------------- AUTH GATE ----------------
 function renderGate() {
@@ -352,6 +353,7 @@ function onInventorySearch(value) {
 async function renderInventory() {
   const viewOnly = Auth.isViewOnly();
   const rows = filteredInventory();
+  const selectedCount = inventorySelectedIds.size;
   $('#app').innerHTML = `
     <div class="head">
       <h2>Inventory</h2>
@@ -362,17 +364,23 @@ async function renderInventory() {
       </div>
     </div>
     <div class="notice">Data is stored in Supabase — shared live across every device, and deletions are permanent. Use "Add existing item" for stock that's already been bought and fully settled — it skips fund approval &amp; document generation, tracking, and reimbursement, and lands straight in Inventory. Use "Edit" on any row to change details or remarks at any time.</div>
-    <div class="section" style="margin-bottom:12px">
+    <div class="section" style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <input id="inv-search" type="text" placeholder="Search by name, vendor, category, remarks or invoice no..." value="${inventorySearchTerm.replace(/"/g, '&quot;')}" oninput="onInventorySearch(this.value)" style="width:100%;max-width:420px">
+      ${!viewOnly && selectedCount > 0 ? `
+        <span class="pill blue">${selectedCount} selected</span>
+        <button class="btn" onclick="bulkSetQuickAdd(true)">Mark as already purchased (hide from Dashboard/Tracking/Docs)</button>
+        <button class="btn" onclick="bulkSetQuickAdd(false)">Mark as active procurement (show everywhere)</button>
+        <button class="btn" onclick="clearInventorySelection()">Clear selection</button>` : ''}
     </div>
     <div class="tablewrap section">
       <table>
         <thead><tr>
-          <th>Component</th><th>Qty</th><th>Vendor</th><th>Unit price</th><th>Total</th>
-          <th>GeM</th><th>Payment</th><th>Invoice</th><th>Remarks</th>${viewOnly ? '' : '<th></th>'}
+          ${viewOnly ? '' : '<th></th>'}<th>Component</th><th>Qty</th><th>Vendor</th><th>Unit price</th><th>Total</th>
+          <th>GeM</th><th>Payment</th><th>Invoice</th><th>Remarks</th><th>Status</th>${viewOnly ? '' : '<th></th>'}
         </tr></thead>
         <tbody>${rows.map(c => `
           <tr>
+            ${viewOnly ? '' : `<td><input type="checkbox" ${inventorySelectedIds.has(c.id) ? 'checked' : ''} onchange="toggleInventorySelect(${c.id}, this.checked)"></td>`}
             <td><b>${c.name}</b><br><small class="muted">${c.category}</small></td>
             <td>${c.qty}</td>
             <td>${c.vendor || '—'}</td>
@@ -382,21 +390,42 @@ async function renderInventory() {
             <td>${pillForPayment(c.payment_status)}</td>
             <td>${c.invoice_no || '<span class="muted">Pending</span>'}</td>
             <td class="muted" style="font-size:11px;max-width:160px">${c.remarks || '—'}</td>
+            <td>${isQuickAddItem(c) ? '<span class="pill gray">Already purchased</span>' : '<span class="pill blue">Active procurement</span>'}</td>
             ${viewOnly ? '' : `<td style="display:flex;gap:6px;white-space:nowrap"><button class="btn" onclick="openEditComponentModal(${c.id})">Edit</button><button class="btn danger" onclick="confirmDeleteComponent(${c.id}, '${c.name.replace(/'/g, "\\'")}')">Delete</button></td>`}
-          </tr>`).join('') || `<tr><td colspan="9" class="empty">${inventorySearchTerm ? 'No components match your search' : 'No components yet'}</td></tr>`}
+          </tr>`).join('') || `<tr><td colspan="10" class="empty">${inventorySearchTerm ? 'No components match your search' : 'No components yet'}</td></tr>`}
         </tbody>
       </table>
     </div>`;
 
   const searchInput = $('#inv-search');
-  if (searchInput && document.activeElement !== searchInput) {
-    // no-op: focus only restored below when user was typing
-  }
   if (searchInput && inventorySearchTerm) {
     searchInput.focus();
     const pos = searchInput.value.length;
     searchInput.setSelectionRange(pos, pos);
   }
+}
+
+function toggleInventorySelect(id, checked) {
+  if (checked) inventorySelectedIds.add(id);
+  else inventorySelectedIds.delete(id);
+  renderInventory();
+}
+
+function clearInventorySelection() {
+  inventorySelectedIds.clear();
+  renderInventory();
+}
+
+async function bulkSetQuickAdd(flag) {
+  const ids = Array.from(inventorySelectedIds);
+  if (ids.length === 0) return;
+  for (const id of ids) {
+    await DB.updateComponent(id, { isQuickAdd: flag });
+  }
+  inventorySelectedIds.clear();
+  await refreshComponents();
+  toast(flag ? 'Marked as already purchased' : 'Marked as active procurement');
+  showTab('inventory');
 }
 
 async function confirmDeleteComponent(id, name) {
