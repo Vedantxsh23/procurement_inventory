@@ -1,28 +1,6 @@
 /* WeRoCon Lab — Procurement & Inventory System
    Document generator. Builds .docx files in-browser using the vendored
    docx.js (window.docx) library — no server required.
-
-   Included builders:
-     1. buildFundApproval            — Fund Approval for Procurement (Acct/R&D-01)
-     2. buildQuotationDoc            — Vendor Quotation Comparison Statement
-     3. buildNonGemDoc               — Certificate for Non-GeM Purchase
-     4. buildPaymentReceiptDoc       — Payment Receipt / Reimbursement Claim (unchanged)
-     5. buildPaymentReimbursementDoc — Form for Payment/ Reimbursement (R&D/Acct-02) [NEW]
-
-   Plus:
-     - InvoiceExtractor — free, client-side OCR (Tesseract.js) that reads an
-       uploaded quotation/invoice file and extracts invoice no., date,
-       item description and amount to help fill (5). [NEW]
-
-   ---------------------------------------------------------------------------
-   SETUP: add these script tags in your HTML BEFORE this file (Tesseract.js
-   powers the free OCR; pdf.js is only needed if invoices are uploaded as
-   PDF rather than image files):
-
-     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-     <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-     <script src="DocGen.js"></script>
-   ---------------------------------------------------------------------------
 */
 
 const DocGen = (() => {
@@ -391,7 +369,7 @@ const DocGen = (() => {
     });
   }
 
-  // ---------- 4. PAYMENT RECEIPT (unchanged) ----------
+  // ---------- 4. PAYMENT RECEIPT (existing — untouched) ----------
   function buildPaymentReceiptDoc(meta, components) {
     const invoiced = components.filter(c => c.invoiceNo);
     const colW = [600, 2800, 1800, 2200, 1900, 1700];
@@ -436,30 +414,24 @@ const DocGen = (() => {
     });
   }
 
-  // ---------- 5. PAYMENT / REIMBURSEMENT FORM (exact replica of R&D/Acct-02) [NEW] ----------
-  //
-  // meta        = { piName, projectNo, projectTitle, budgetHead,
-  //                 fundApprovalRefNo, fundApprovalDate,
-  //                 procurementRoute /* 'GeM' | 'Non-GeM' */,
-  //                 payeeName, justification }
-  // bankDetails = { accountNo, ifsc }   -- manual, fill later
-  // billItems   = [{ invoiceNo, date, itemsDetails, relevancy, amount, stockRegisterPage }]
-  function buildPaymentReimbursementDoc(meta, bankDetails, billItems) {
+  // ---------- 5. FORM FOR PAYMENT / REIMBURSEMENT (exact replica of IIT Jodhpur R&D/Acct-02) ----------
+  // meta additionally expects: fundApprovalRef, fundApprovalDate, procurementRoute ('GeM' | 'Non-GeM'),
+  // payeeName, bankAccountNo, bankIfsc, budgetHead ('Recurring' | 'Non-Recurring'), justification
+  // bills: [{ invoiceNo, date, itemDetails, relevancy, amount, stockRegisterPage }]
+  function buildPaymentFormDoc(meta, bills) {
     const FONT = 'Book Antiqua';
     const SIZE = 22; // 11pt
 
+    const COL = { num: 495, label: 2655, label2: 3015, qty: 1095, cost: 2100 };
+    const TABLE_WIDTH = 9360;
+    const COLUMN_WIDTHS = [COL.num, COL.label, COL.label2, COL.qty, COL.cost];
+
     function run(text, opts = {}) {
-      return new D.TextRun({
-        text: String(text ?? ''),
-        font: FONT,
-        size: SIZE,
-        bold: !!opts.bold,
-        underline: opts.underline ? {} : undefined,
-      });
+      return new D.TextRun({ text: String(text ?? ''), font: FONT, size: SIZE, bold: !!opts.bold, underline: opts.underline ? {} : undefined });
     }
     function para(children, opts = {}) {
       return new D.Paragraph({
-        alignment: opts.align || D.AlignmentType.LEFT,
+        alignment: opts.align || D.AlignmentType.JUSTIFIED,
         children: Array.isArray(children) ? children : [children],
       });
     }
@@ -468,22 +440,10 @@ const DocGen = (() => {
         borders: cellBorders,
         width: opts.width ? { size: opts.width, type: D.WidthType.DXA } : undefined,
         columnSpan: opts.colSpan,
-        margins: { top: 60, bottom: 60, left: 100, right: 100 },
+        rowSpan: opts.rowSpan,
+        verticalAlign: opts.vAlign || D.VerticalAlign.TOP,
+        margins: { top: 40, bottom: 40, left: 100, right: 100 },
         children: Array.isArray(children) ? children : [children],
-      });
-    }
-
-    const TABLE_WIDTH = 9360;
-    const LABEL_W = 3200;
-    const VALUE_W = TABLE_WIDTH - 495 - LABEL_W;
-
-    function infoRow(num, label, value) {
-      return new D.TableRow({
-        children: [
-          fcell(para(run(String(num))), { width: 495 }),
-          fcell(para(run(label)), { width: LABEL_W }),
-          fcell(para(run(value || '')), { width: VALUE_W }),
-        ],
       });
     }
 
@@ -493,83 +453,109 @@ const DocGen = (() => {
       new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [run('Form No: R&D/Acct-02', { bold: true })] }),
       new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [run('')] }),
       new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [run('Form for Payment/ Reimbursement', { bold: true })] }),
-      new D.Paragraph({ children: [run('')] }),
     ];
+
+    function infoRow(num, label, value) {
+      return new D.TableRow({
+        children: [
+          fcell(para(run(String(num))), { width: COL.num }),
+          fcell(para(run(label)), { width: COL.label }),
+          fcell(para(run(value || '')), { width: COL.label2 + COL.qty + COL.cost, colSpan: 3 }),
+        ],
+      });
+    }
 
     const infoTable = new D.Table({
       width: { size: TABLE_WIDTH, type: D.WidthType.DXA },
-      columnWidths: [495, LABEL_W, VALUE_W],
+      columnWidths: COLUMN_WIDTHS,
       rows: [
         infoRow(1, 'Name of the PI', meta.piName),
         infoRow(2, 'Project No.', meta.projectNo),
         infoRow(3, 'Project Title', meta.projectTitle),
-        infoRow(4, 'Budget Head (Recurring / Non-Recurring)', meta.budgetHead),
-        infoRow(5, 'Fund Approval Reference Number & Date (Given by Office of R&D)',
-          `${meta.fundApprovalRefNo || ''}${meta.fundApprovalDate ? '  dated ' + meta.fundApprovalDate : ''}`),
-        infoRow(6, 'Procurement through GeM/Non-GeM', meta.procurementRoute),
-        infoRow(7, 'In case of Non-GeM please attach GeM non-availability certificate', meta.procurementRoute === 'Non-GeM' ? 'Attached' : ''),
+        infoRow(4, 'Budget Head\n(Please specify the budget head as per sanction of funding agency)', meta.budgetHead || 'Non-Recurring'),
+        infoRow(5, 'Fund Approval Reference Number & Date\n(Given by Office of R&D)', `${meta.fundApprovalRef || ''}${meta.fundApprovalDate ? '   Date: ' + meta.fundApprovalDate : ''}`),
+        infoRow(6, 'Procurement through GeM/Non-Gem', meta.procurementRoute || 'GeM'),
+        infoRow(7, 'In case of Non-Gem please attach Gem non-availability certificate', meta.procurementRoute === 'Non-GeM' ? 'Attached' : ''),
         infoRow(8, 'Payment to be made in the name of', meta.payeeName),
-        infoRow(9, 'Bank A/c No. & IFSC Code:',
-          `A/c No. -- ${bankDetails && bankDetails.accountNo ? bankDetails.accountNo : '[To be filled]'}     IFSC -- ${bankDetails && bankDetails.ifsc ? bankDetails.ifsc : '[To be filled]'}`),
+        infoRow(9, 'Bank A/c No. & IFSC Code:', `A/c No. — ${meta.bankAccountNo || ''}     IFSC — ${meta.bankIfsc || ''}`),
       ],
     });
 
-    // ---- Bills / Invoices table ----
-    const billColW = { sn: 500, invoice: 1200, date: 900, items: 2800, relevancy: 1300, amount: 1200, stock: 1460 };
-    const billTableWidth = Object.values(billColW).reduce((a, b) => a + b, 0);
-
+    // ---- Details of Bills / Invoices table ----
+    const billColW = [500, 1400, 1000, 3060, 1400, 1200, 800];
     const billHeaderRow = new D.TableRow({
       children: [
-        fcell(para(run('S No.', { bold: true })), { width: billColW.sn }),
-        fcell(para(run('Invoice/Bill No.', { bold: true })), { width: billColW.invoice }),
-        fcell(para(run('Date', { bold: true })), { width: billColW.date }),
-        fcell(para(run('Details of Items purchased / Expenditure made', { bold: true })), { width: billColW.items }),
-        fcell(para(run('Relevancy of expenditure (w.r.t. project)', { bold: true })), { width: billColW.relevancy }),
-        fcell(para(run('Amount (Rs.)', { bold: true })), { width: billColW.amount }),
-        fcell(para(run('Stock-Register Page No.', { bold: true })), { width: billColW.stock }),
+        fcell(para(run('S No.', { bold: true }), { align: D.AlignmentType.CENTER }), { width: billColW[0] }),
+        fcell(para(run('Invoice/ Bill No.', { bold: true }), { align: D.AlignmentType.CENTER }), { width: billColW[1] }),
+        fcell(para(run('Date', { bold: true }), { align: D.AlignmentType.CENTER }), { width: billColW[2] }),
+        fcell(para(run('Details of Items purchased / Expenditure made', { bold: true }), { align: D.AlignmentType.CENTER }), { width: billColW[3] }),
+        fcell(para(run('Relevancy of expenditure (with respect to the project)', { bold: true }), { align: D.AlignmentType.CENTER }), { width: billColW[4] }),
+        fcell(para(run('Amount (Rs.)', { bold: true }), { align: D.AlignmentType.CENTER }), { width: billColW[5] }),
+        fcell(para(run('Stock-Register Page No.', { bold: true }), { align: D.AlignmentType.CENTER }), { width: billColW[6] }),
       ],
     });
-
-    const rowCount = Math.max((billItems || []).length, 3);
-    const billRows = [];
-    let total = 0;
-    for (let i = 0; i < rowCount; i++) {
-      const it = (billItems || [])[i];
-      if (it) total += Number(it.amount) || 0;
-      billRows.push(new D.TableRow({
+    const billRowCount = Math.max((bills || []).length, 3);
+    function billRow(b, i) {
+      return new D.TableRow({
         children: [
-          fcell(para(run(it ? String(i + 1) : '')), { width: billColW.sn }),
-          fcell(para(run(it ? it.invoiceNo : '')), { width: billColW.invoice }),
-          fcell(para(run(it ? it.date : '')), { width: billColW.date }),
-          fcell(para(run(it ? it.itemsDetails : '')), { width: billColW.items }),
-          fcell(para(run(it ? it.relevancy : '')), { width: billColW.relevancy }),
-          fcell(para(run(it ? fmtRs(it.amount) : ''), { align: D.AlignmentType.RIGHT }), { width: billColW.amount }),
-          fcell(para(run(it ? it.stockRegisterPage : '')), { width: billColW.stock }),
+          fcell(para(run(b ? String(i + 1) : ''), { align: D.AlignmentType.CENTER }), { width: billColW[0] }),
+          fcell(para(run(b ? b.invoiceNo : ''))),
+          fcell(para(run(b ? b.date : ''))),
+          fcell(para(run(b ? b.itemDetails : ''))),
+          fcell(para(run(b ? b.relevancy : ''))),
+          fcell(para(run(b ? fmtRs(b.amount) : ''), { align: D.AlignmentType.RIGHT })),
+          fcell(para(run(b ? (b.stockRegisterPage || '') : ''))),
         ],
-      }));
+      });
     }
+    const billRows = [];
+    for (let i = 0; i < billRowCount; i++) billRows.push(billRow((bills || [])[i], i));
+    const total = (bills || []).reduce((s, b) => s + Number(b.amount || 0), 0);
     const billTotalRow = new D.TableRow({
       children: [
-        fcell(para(run('Total', { bold: true })), { width: billColW.sn + billColW.invoice + billColW.date + billColW.items + billColW.relevancy, colSpan: 5 }),
-        fcell(para(run(fmtRs(total)), { align: D.AlignmentType.RIGHT }), { width: billColW.amount }),
-        fcell(para(run('')), { width: billColW.stock }),
+        fcell(para(run('Total', { bold: true })), { width: billColW[0] + billColW[1] + billColW[2] + billColW[3] + billColW[4], colSpan: 5, align: D.AlignmentType.RIGHT }),
+        fcell(para(run(fmtRs(total), { bold: true }), { align: D.AlignmentType.RIGHT }), { width: billColW[5] }),
+        fcell(para(run('')), { width: billColW[6] }),
       ],
     });
-
-    const billTable = new D.Table({
-      width: { size: billTableWidth, type: D.WidthType.DXA },
-      columnWidths: Object.values(billColW),
+    const billsTableWidth = billColW.reduce((a, b) => a + b, 0);
+    const billsTable = new D.Table({
+      width: { size: billsTableWidth, type: D.WidthType.DXA },
+      columnWidths: billColW,
       rows: [billHeaderRow, ...billRows, billTotalRow],
     });
 
     const declaration = [
-      new D.Paragraph({ children: [run('')] }),
-      new D.Paragraph({ children: [run('I hereby declare that:', { bold: true, underline: true })] }),
-      para(run('1. I am personally satisfied that these goods purchased are of the requisite quality and specification and have been purchased from reliable supplier at a reasonable price.'), { align: D.AlignmentType.JUSTIFIED }),
-      para(run('2. The Expenditure was made with due approval and by following Institute Norms.'), { align: D.AlignmentType.JUSTIFIED }),
-      para(run('3. Certified that the items purchased were not available in the Laboratory / Department and were needed to fulfill the requirements of the project.'), { align: D.AlignmentType.JUSTIFIED }),
-      para([run('4. Justification (for urgent procurement): '), run(meta.justification || '.'.repeat(80))], { align: D.AlignmentType.JUSTIFIED }),
-      new D.Paragraph({ children: [run('')] }),
+      new D.Paragraph({ children: [run('Details of Bills / Invoices submitted', { bold: true, underline: true })], spacing: { before: 200, after: 100 } }),
+    ];
+
+    const declarationParas = [
+      new D.Paragraph({ children: [run('')], spacing: { before: 200 } }),
+      new D.Paragraph({ children: [run('I hereby declare that:', { bold: true })] }),
+      new D.Paragraph({
+        alignment: D.AlignmentType.JUSTIFIED,
+        indent: { left: 360 },
+        children: [run('1. I am personally satisfied that these goods purchased are of the requisite quality and specification and have been purchased from reliable supplier at a reasonable price.')],
+      }),
+      new D.Paragraph({
+        alignment: D.AlignmentType.JUSTIFIED,
+        indent: { left: 360 },
+        children: [run('2. The Expenditure was made with due approval and by following Institute Norms.')],
+      }),
+      new D.Paragraph({
+        alignment: D.AlignmentType.JUSTIFIED,
+        indent: { left: 360 },
+        children: [run('3. Certified that the items purchased were not available in the Laboratory / Department and were needed to fulfill the requirements of the project.')],
+      }),
+      new D.Paragraph({
+        alignment: D.AlignmentType.JUSTIFIED,
+        indent: { left: 360 },
+        children: [
+          run('4. Justification (for urgent procurement): '),
+          run(meta.justification || '..............................................................................................................................................................................................................................................................'),
+        ],
+      }),
+      new D.Paragraph({ children: [run('')], spacing: { before: 400 } }),
       new D.Paragraph({ children: [run('Signature of PI: _____________      Date: _____________')] }),
     ];
 
@@ -582,103 +568,11 @@ const DocGen = (() => {
               margin: { top: 1440, right: 1440, bottom: 1440, left: 1440, header: 720, footer: 720 },
             },
           },
-          children: [...headerLines, infoTable, ...declaration, new D.Paragraph({ children: [run('')] }), billTable],
+          children: [...headerLines, infoTable, ...declaration, billsTable, ...declarationParas],
         },
       ],
     });
   }
-
-  // ---------- INVOICE EXTRACTOR — free, client-side OCR (Tesseract.js) [NEW] ----------
-  const InvoiceExtractor = (() => {
-    async function fileToImageSource(file) {
-      // PDFs: render first page to canvas via pdf.js (only used if you upload PDFs)
-      if (file.type === 'application/pdf') {
-        if (!window.pdfjsLib) {
-          throw new Error('pdf.js not loaded — add the pdf.min.js script tag, or upload the invoice as an image instead.');
-        }
-        const buf = await file.arrayBuffer();
-        const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
-        const page = await pdf.getPage(1);
-        const viewport = page.getViewport({ scale: 2.0 });
-        const canvas = document.createElement('canvas');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-        return canvas.toDataURL('image/png');
-      }
-      // Images: just read as data URL
-      return await new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res(r.result);
-        r.onerror = () => rej(new Error('Could not read file'));
-        r.readAsDataURL(file);
-      });
-    }
-
-    function parseFields(text) {
-      const clean = text.replace(/\r/g, '');
-
-      // Invoice / Bill number — common labels
-      const invMatch = clean.match(/(?:invoice|bill)\s*(?:no\.?|number|#)\s*[:\-]?\s*([A-Za-z0-9\/\-]+)/i);
-
-      // Date — dd/mm/yyyy, dd-mm-yyyy, or "13 Feb 2026" style
-      const dateMatch =
-        clean.match(/\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/) ||
-        clean.match(/\b(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\b/);
-
-      // Amount / Total — pick the largest "total"-labelled number
-      const amountMatches = [...clean.matchAll(/(?:grand\s*total|total\s*amount|total|amount\s*payable)\s*[:\-]?\s*(?:rs\.?|inr|₹)?\s*([\d,]+(?:\.\d{1,2})?)/gi)];
-      let amount = null;
-      if (amountMatches.length) {
-        amount = Math.max(...amountMatches.map(m => parseFloat(m[1].replace(/,/g, ''))));
-      } else {
-        // fallback: largest ₹/Rs figure anywhere in the doc
-        const anyAmounts = [...clean.matchAll(/(?:rs\.?|inr|₹)\s*([\d,]+(?:\.\d{1,2})?)/gi)]
-          .map(m => parseFloat(m[1].replace(/,/g, '')));
-        if (anyAmounts.length) amount = Math.max(...anyAmounts);
-      }
-
-      // Item description — first substantial line that isn't a header/label
-      const lines = clean.split('\n').map(l => l.trim()).filter(Boolean);
-      const skipRe = /^(invoice|bill|gstin|date|to|from|address|phone|email|total|amount|tax|hsn|sac|qty|rate|s\.?\s*no)/i;
-      const itemLine = lines.find(l => l.length > 15 && !skipRe.test(l) && !/^[\d\s.,\-\/]+$/.test(l));
-
-      return {
-        invoiceNo: invMatch ? invMatch[1] : null,
-        invoiceDate: dateMatch ? dateMatch[1] : null,
-        amount: amount,
-        itemDescription: itemLine || null,
-        rawText: clean,
-      };
-    }
-
-    // Main entry point. Renames the uploaded "quotation" conceptually to
-    // "invoice" — does not touch any quotation-comparison logic.
-    async function extract(file, onProgress) {
-      if (!window.Tesseract) {
-        throw new Error('Tesseract.js not loaded — add the tesseract.min.js script tag (free, no API key needed).');
-      }
-      const dataUrl = await fileToImageSource(file);
-
-      const { data } = await window.Tesseract.recognize(dataUrl, 'eng', {
-        logger: (m) => {
-          if (onProgress && m.status === 'recognizing text') onProgress(Math.round(m.progress * 100));
-        },
-      });
-
-      const fields = parseFields(data.text || '');
-
-      return {
-        ...fields,
-        sourceFileName: file.name,
-        invoiceFileName: 'Invoice_' + file.name, // renamed label, as requested
-        dataUrl, // keep for embedding in the ZIP bundle / doc if desired
-        ocrConfidence: data.confidence,
-      };
-    }
-
-    return { extract, parseFields };
-  })();
 
   // ---------- triggers ----------
   function triggerDownload(blob, filename) {
@@ -692,25 +586,24 @@ const DocGen = (() => {
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
-  async function generateBlob(type, meta, components, extra) {
+  async function generateBlob(type, meta, components) {
     let doc;
     if (type === 'fund-approval') doc = buildFundApproval(meta, components);
     else if (type === 'quotation') doc = buildQuotationDoc(meta, components);
     else if (type === 'non-gem') doc = buildNonGemDoc(meta, components);
     else if (type === 'payment-receipt') doc = buildPaymentReceiptDoc(meta, components);
-    else if (type === 'payment-reimbursement')
-      doc = buildPaymentReimbursementDoc(meta, (extra && extra.bankDetails) || {}, (extra && extra.billItems) || components);
+    else if (type === 'payment-form') doc = buildPaymentFormDoc(meta, components /* bills array in this case */);
     else throw new Error('Unknown doc type: ' + type);
     return await D.Packer.toBlob(doc);
   }
 
-  async function downloadOne(type, meta, components, filename, extra) {
-    const blob = await generateBlob(type, meta, components, extra);
+  async function downloadOne(type, meta, components, filename) {
+    const blob = await generateBlob(type, meta, components);
     triggerDownload(blob, filename);
   }
 
   // Bundle all docs + any uploaded quotation/invoice files into one ZIP
-  async function downloadBundle(meta, components, extra) {
+  async function downloadBundle(meta, components) {
     const zip = new JSZip();
     const stamp = new Date().toISOString().split('T')[0];
 
@@ -731,22 +624,21 @@ const DocGen = (() => {
       const receipt = await generateBlob('payment-receipt', meta, components);
       zip.file(`Payment_Receipt_${stamp}.docx`, receipt);
 
-      // Also include the formal Payment/Reimbursement form (R&D/Acct-02)
-      // whenever there are invoiced items, using bank details / bill rows
-      // passed in via `extra` (falls back to deriving bill rows from components).
-      const billItems = (extra && extra.billItems) || invoicedItems.map(c => ({
-        invoiceNo: c.invoiceNo,
-        date: c.invoiceDate || '',
-        itemsDetails: c.name,
-        relevancy: 'Project requirement',
-        amount: c.qty * c.unitPrice,
-        stockRegisterPage: '',
-      }));
-      const reimbursement = await generateBlob('payment-reimbursement', meta, components, {
-        bankDetails: (extra && extra.bankDetails) || {},
-        billItems,
-      });
-      zip.file(`Payment_Reimbursement_Form_${stamp}.docx`, reimbursement);
+      // NEW: also produce the official "Form for Payment/Reimbursement" (R&D/Acct-02)
+      // whenever bank account details are present on the meta object, built from
+      // the same invoiced items (mapped into the bill-row shape it expects).
+      if (meta.bankAccountNo && meta.bankIfsc) {
+        const bills = invoicedItems.map(c => ({
+          invoiceNo: c.invoiceNo,
+          date: c.invoiceDate || '',
+          itemDetails: c.name,
+          relevancy: c.relevancy || 'Project requirement',
+          amount: c.qty * c.unitPrice,
+          stockRegisterPage: c.stockRegisterPage || '',
+        }));
+        const paymentForm = await generateBlob('payment-form', meta, bills);
+        zip.file(`Form_for_Payment_Reimbursement_${stamp}.docx`, paymentForm);
+      }
     }
 
     // include any uploaded quotation / invoice files
@@ -768,13 +660,5 @@ const DocGen = (() => {
     triggerDownload(blob, `WeRoCon_Procurement_Bundle_${stamp}.zip`);
   }
 
-  return {
-    downloadOne,
-    downloadBundle,
-    generateBlob,
-    refNo,
-    todayStr,
-    fmtRs,
-    InvoiceExtractor,
-  };
+  return { downloadOne, downloadBundle, generateBlob, refNo, todayStr, fmtRs };
 })();
