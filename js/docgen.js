@@ -1,6 +1,28 @@
 /* WeRoCon Lab — Procurement & Inventory System
    Document generator. Builds .docx files in-browser using the vendored
    docx.js (window.docx) library — no server required.
+
+   Included builders:
+     1. buildFundApproval            — Fund Approval for Procurement (Acct/R&D-01)
+     2. buildQuotationDoc            — Vendor Quotation Comparison Statement
+     3. buildNonGemDoc               — Certificate for Non-GeM Purchase
+     4. buildPaymentReceiptDoc       — Payment Receipt / Reimbursement Claim (unchanged)
+     5. buildPaymentReimbursementDoc — Form for Payment/ Reimbursement (R&D/Acct-02) [NEW]
+
+   Plus:
+     - InvoiceExtractor — free, client-side OCR (Tesseract.js) that reads an
+       uploaded quotation/invoice file and extracts invoice no., date,
+       item description and amount to help fill (5). [NEW]
+
+   ---------------------------------------------------------------------------
+   SETUP: add these script tags in your HTML BEFORE this file (Tesseract.js
+   powers the free OCR; pdf.js is only needed if invoices are uploaded as
+   PDF rather than image files):
+
+     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+     <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+     <script src="DocGen.js"></script>
+   ---------------------------------------------------------------------------
 */
 
 const DocGen = (() => {
@@ -369,7 +391,7 @@ const DocGen = (() => {
     });
   }
 
-  // ---------- 4. PAYMENT RECEIPT ----------
+  // ---------- 4. PAYMENT RECEIPT (unchanged) ----------
   function buildPaymentReceiptDoc(meta, components) {
     const invoiced = components.filter(c => c.invoiceNo);
     const colW = [600, 2800, 1800, 2200, 1900, 1700];
@@ -414,6 +436,250 @@ const DocGen = (() => {
     });
   }
 
+  // ---------- 5. PAYMENT / REIMBURSEMENT FORM (exact replica of R&D/Acct-02) [NEW] ----------
+  //
+  // meta        = { piName, projectNo, projectTitle, budgetHead,
+  //                 fundApprovalRefNo, fundApprovalDate,
+  //                 procurementRoute /* 'GeM' | 'Non-GeM' */,
+  //                 payeeName, justification }
+  // bankDetails = { accountNo, ifsc }   -- manual, fill later
+  // billItems   = [{ invoiceNo, date, itemsDetails, relevancy, amount, stockRegisterPage }]
+  function buildPaymentReimbursementDoc(meta, bankDetails, billItems) {
+    const FONT = 'Book Antiqua';
+    const SIZE = 22; // 11pt
+
+    function run(text, opts = {}) {
+      return new D.TextRun({
+        text: String(text ?? ''),
+        font: FONT,
+        size: SIZE,
+        bold: !!opts.bold,
+        underline: opts.underline ? {} : undefined,
+      });
+    }
+    function para(children, opts = {}) {
+      return new D.Paragraph({
+        alignment: opts.align || D.AlignmentType.LEFT,
+        children: Array.isArray(children) ? children : [children],
+      });
+    }
+    function fcell(children, opts = {}) {
+      return new D.TableCell({
+        borders: cellBorders,
+        width: opts.width ? { size: opts.width, type: D.WidthType.DXA } : undefined,
+        columnSpan: opts.colSpan,
+        margins: { top: 60, bottom: 60, left: 100, right: 100 },
+        children: Array.isArray(children) ? children : [children],
+      });
+    }
+
+    const TABLE_WIDTH = 9360;
+    const LABEL_W = 3200;
+    const VALUE_W = TABLE_WIDTH - 495 - LABEL_W;
+
+    function infoRow(num, label, value) {
+      return new D.TableRow({
+        children: [
+          fcell(para(run(String(num))), { width: 495 }),
+          fcell(para(run(label)), { width: LABEL_W }),
+          fcell(para(run(value || '')), { width: VALUE_W }),
+        ],
+      });
+    }
+
+    const headerLines = [
+      new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [run('Indian Institute of Technology Jodhpur', { bold: true })] }),
+      new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [run('Office of Research & Development', { bold: true })] }),
+      new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [run('Form No: R&D/Acct-02', { bold: true })] }),
+      new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [run('')] }),
+      new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [run('Form for Payment/ Reimbursement', { bold: true })] }),
+      new D.Paragraph({ children: [run('')] }),
+    ];
+
+    const infoTable = new D.Table({
+      width: { size: TABLE_WIDTH, type: D.WidthType.DXA },
+      columnWidths: [495, LABEL_W, VALUE_W],
+      rows: [
+        infoRow(1, 'Name of the PI', meta.piName),
+        infoRow(2, 'Project No.', meta.projectNo),
+        infoRow(3, 'Project Title', meta.projectTitle),
+        infoRow(4, 'Budget Head (Recurring / Non-Recurring)', meta.budgetHead),
+        infoRow(5, 'Fund Approval Reference Number & Date (Given by Office of R&D)',
+          `${meta.fundApprovalRefNo || ''}${meta.fundApprovalDate ? '  dated ' + meta.fundApprovalDate : ''}`),
+        infoRow(6, 'Procurement through GeM/Non-GeM', meta.procurementRoute),
+        infoRow(7, 'In case of Non-GeM please attach GeM non-availability certificate', meta.procurementRoute === 'Non-GeM' ? 'Attached' : ''),
+        infoRow(8, 'Payment to be made in the name of', meta.payeeName),
+        infoRow(9, 'Bank A/c No. & IFSC Code:',
+          `A/c No. -- ${bankDetails && bankDetails.accountNo ? bankDetails.accountNo : '[To be filled]'}     IFSC -- ${bankDetails && bankDetails.ifsc ? bankDetails.ifsc : '[To be filled]'}`),
+      ],
+    });
+
+    // ---- Bills / Invoices table ----
+    const billColW = { sn: 500, invoice: 1200, date: 900, items: 2800, relevancy: 1300, amount: 1200, stock: 1460 };
+    const billTableWidth = Object.values(billColW).reduce((a, b) => a + b, 0);
+
+    const billHeaderRow = new D.TableRow({
+      children: [
+        fcell(para(run('S No.', { bold: true })), { width: billColW.sn }),
+        fcell(para(run('Invoice/Bill No.', { bold: true })), { width: billColW.invoice }),
+        fcell(para(run('Date', { bold: true })), { width: billColW.date }),
+        fcell(para(run('Details of Items purchased / Expenditure made', { bold: true })), { width: billColW.items }),
+        fcell(para(run('Relevancy of expenditure (w.r.t. project)', { bold: true })), { width: billColW.relevancy }),
+        fcell(para(run('Amount (Rs.)', { bold: true })), { width: billColW.amount }),
+        fcell(para(run('Stock-Register Page No.', { bold: true })), { width: billColW.stock }),
+      ],
+    });
+
+    const rowCount = Math.max((billItems || []).length, 3);
+    const billRows = [];
+    let total = 0;
+    for (let i = 0; i < rowCount; i++) {
+      const it = (billItems || [])[i];
+      if (it) total += Number(it.amount) || 0;
+      billRows.push(new D.TableRow({
+        children: [
+          fcell(para(run(it ? String(i + 1) : '')), { width: billColW.sn }),
+          fcell(para(run(it ? it.invoiceNo : '')), { width: billColW.invoice }),
+          fcell(para(run(it ? it.date : '')), { width: billColW.date }),
+          fcell(para(run(it ? it.itemsDetails : '')), { width: billColW.items }),
+          fcell(para(run(it ? it.relevancy : '')), { width: billColW.relevancy }),
+          fcell(para(run(it ? fmtRs(it.amount) : ''), { align: D.AlignmentType.RIGHT }), { width: billColW.amount }),
+          fcell(para(run(it ? it.stockRegisterPage : '')), { width: billColW.stock }),
+        ],
+      }));
+    }
+    const billTotalRow = new D.TableRow({
+      children: [
+        fcell(para(run('Total', { bold: true })), { width: billColW.sn + billColW.invoice + billColW.date + billColW.items + billColW.relevancy, colSpan: 5 }),
+        fcell(para(run(fmtRs(total)), { align: D.AlignmentType.RIGHT }), { width: billColW.amount }),
+        fcell(para(run('')), { width: billColW.stock }),
+      ],
+    });
+
+    const billTable = new D.Table({
+      width: { size: billTableWidth, type: D.WidthType.DXA },
+      columnWidths: Object.values(billColW),
+      rows: [billHeaderRow, ...billRows, billTotalRow],
+    });
+
+    const declaration = [
+      new D.Paragraph({ children: [run('')] }),
+      new D.Paragraph({ children: [run('I hereby declare that:', { bold: true, underline: true })] }),
+      para(run('1. I am personally satisfied that these goods purchased are of the requisite quality and specification and have been purchased from reliable supplier at a reasonable price.'), { align: D.AlignmentType.JUSTIFIED }),
+      para(run('2. The Expenditure was made with due approval and by following Institute Norms.'), { align: D.AlignmentType.JUSTIFIED }),
+      para(run('3. Certified that the items purchased were not available in the Laboratory / Department and were needed to fulfill the requirements of the project.'), { align: D.AlignmentType.JUSTIFIED }),
+      para([run('4. Justification (for urgent procurement): '), run(meta.justification || '.'.repeat(80))], { align: D.AlignmentType.JUSTIFIED }),
+      new D.Paragraph({ children: [run('')] }),
+      new D.Paragraph({ children: [run('Signature of PI: _____________      Date: _____________')] }),
+    ];
+
+    return new D.Document({
+      sections: [
+        {
+          properties: {
+            page: {
+              size: { width: 12240, height: 15840 },
+              margin: { top: 1440, right: 1440, bottom: 1440, left: 1440, header: 720, footer: 720 },
+            },
+          },
+          children: [...headerLines, infoTable, ...declaration, new D.Paragraph({ children: [run('')] }), billTable],
+        },
+      ],
+    });
+  }
+
+  // ---------- INVOICE EXTRACTOR — free, client-side OCR (Tesseract.js) [NEW] ----------
+  const InvoiceExtractor = (() => {
+    async function fileToImageSource(file) {
+      // PDFs: render first page to canvas via pdf.js (only used if you upload PDFs)
+      if (file.type === 'application/pdf') {
+        if (!window.pdfjsLib) {
+          throw new Error('pdf.js not loaded — add the pdf.min.js script tag, or upload the invoice as an image instead.');
+        }
+        const buf = await file.arrayBuffer();
+        const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+        const page = await pdf.getPage(1);
+        const viewport = page.getViewport({ scale: 2.0 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        return canvas.toDataURL('image/png');
+      }
+      // Images: just read as data URL
+      return await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result);
+        r.onerror = () => rej(new Error('Could not read file'));
+        r.readAsDataURL(file);
+      });
+    }
+
+    function parseFields(text) {
+      const clean = text.replace(/\r/g, '');
+
+      // Invoice / Bill number — common labels
+      const invMatch = clean.match(/(?:invoice|bill)\s*(?:no\.?|number|#)\s*[:\-]?\s*([A-Za-z0-9\/\-]+)/i);
+
+      // Date — dd/mm/yyyy, dd-mm-yyyy, or "13 Feb 2026" style
+      const dateMatch =
+        clean.match(/\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/) ||
+        clean.match(/\b(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\b/);
+
+      // Amount / Total — pick the largest "total"-labelled number
+      const amountMatches = [...clean.matchAll(/(?:grand\s*total|total\s*amount|total|amount\s*payable)\s*[:\-]?\s*(?:rs\.?|inr|₹)?\s*([\d,]+(?:\.\d{1,2})?)/gi)];
+      let amount = null;
+      if (amountMatches.length) {
+        amount = Math.max(...amountMatches.map(m => parseFloat(m[1].replace(/,/g, ''))));
+      } else {
+        // fallback: largest ₹/Rs figure anywhere in the doc
+        const anyAmounts = [...clean.matchAll(/(?:rs\.?|inr|₹)\s*([\d,]+(?:\.\d{1,2})?)/gi)]
+          .map(m => parseFloat(m[1].replace(/,/g, '')));
+        if (anyAmounts.length) amount = Math.max(...anyAmounts);
+      }
+
+      // Item description — first substantial line that isn't a header/label
+      const lines = clean.split('\n').map(l => l.trim()).filter(Boolean);
+      const skipRe = /^(invoice|bill|gstin|date|to|from|address|phone|email|total|amount|tax|hsn|sac|qty|rate|s\.?\s*no)/i;
+      const itemLine = lines.find(l => l.length > 15 && !skipRe.test(l) && !/^[\d\s.,\-\/]+$/.test(l));
+
+      return {
+        invoiceNo: invMatch ? invMatch[1] : null,
+        invoiceDate: dateMatch ? dateMatch[1] : null,
+        amount: amount,
+        itemDescription: itemLine || null,
+        rawText: clean,
+      };
+    }
+
+    // Main entry point. Renames the uploaded "quotation" conceptually to
+    // "invoice" — does not touch any quotation-comparison logic.
+    async function extract(file, onProgress) {
+      if (!window.Tesseract) {
+        throw new Error('Tesseract.js not loaded — add the tesseract.min.js script tag (free, no API key needed).');
+      }
+      const dataUrl = await fileToImageSource(file);
+
+      const { data } = await window.Tesseract.recognize(dataUrl, 'eng', {
+        logger: (m) => {
+          if (onProgress && m.status === 'recognizing text') onProgress(Math.round(m.progress * 100));
+        },
+      });
+
+      const fields = parseFields(data.text || '');
+
+      return {
+        ...fields,
+        sourceFileName: file.name,
+        invoiceFileName: 'Invoice_' + file.name, // renamed label, as requested
+        dataUrl, // keep for embedding in the ZIP bundle / doc if desired
+        ocrConfidence: data.confidence,
+      };
+    }
+
+    return { extract, parseFields };
+  })();
+
   // ---------- triggers ----------
   function triggerDownload(blob, filename) {
     const url = URL.createObjectURL(blob);
@@ -426,23 +692,25 @@ const DocGen = (() => {
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
-  async function generateBlob(type, meta, components) {
+  async function generateBlob(type, meta, components, extra) {
     let doc;
     if (type === 'fund-approval') doc = buildFundApproval(meta, components);
     else if (type === 'quotation') doc = buildQuotationDoc(meta, components);
     else if (type === 'non-gem') doc = buildNonGemDoc(meta, components);
     else if (type === 'payment-receipt') doc = buildPaymentReceiptDoc(meta, components);
+    else if (type === 'payment-reimbursement')
+      doc = buildPaymentReimbursementDoc(meta, (extra && extra.bankDetails) || {}, (extra && extra.billItems) || components);
     else throw new Error('Unknown doc type: ' + type);
     return await D.Packer.toBlob(doc);
   }
 
-  async function downloadOne(type, meta, components, filename) {
-    const blob = await generateBlob(type, meta, components);
+  async function downloadOne(type, meta, components, filename, extra) {
+    const blob = await generateBlob(type, meta, components, extra);
     triggerDownload(blob, filename);
   }
 
   // Bundle all docs + any uploaded quotation/invoice files into one ZIP
-  async function downloadBundle(meta, components) {
+  async function downloadBundle(meta, components, extra) {
     const zip = new JSZip();
     const stamp = new Date().toISOString().split('T')[0];
 
@@ -462,6 +730,23 @@ const DocGen = (() => {
     if (invoicedItems.length) {
       const receipt = await generateBlob('payment-receipt', meta, components);
       zip.file(`Payment_Receipt_${stamp}.docx`, receipt);
+
+      // Also include the formal Payment/Reimbursement form (R&D/Acct-02)
+      // whenever there are invoiced items, using bank details / bill rows
+      // passed in via `extra` (falls back to deriving bill rows from components).
+      const billItems = (extra && extra.billItems) || invoicedItems.map(c => ({
+        invoiceNo: c.invoiceNo,
+        date: c.invoiceDate || '',
+        itemsDetails: c.name,
+        relevancy: 'Project requirement',
+        amount: c.qty * c.unitPrice,
+        stockRegisterPage: '',
+      }));
+      const reimbursement = await generateBlob('payment-reimbursement', meta, components, {
+        bankDetails: (extra && extra.bankDetails) || {},
+        billItems,
+      });
+      zip.file(`Payment_Reimbursement_Form_${stamp}.docx`, reimbursement);
     }
 
     // include any uploaded quotation / invoice files
@@ -483,5 +768,13 @@ const DocGen = (() => {
     triggerDownload(blob, `WeRoCon_Procurement_Bundle_${stamp}.zip`);
   }
 
-  return { downloadOne, downloadBundle, generateBlob, refNo, todayStr, fmtRs };
+  return {
+    downloadOne,
+    downloadBundle,
+    generateBlob,
+    refNo,
+    todayStr,
+    fmtRs,
+    InvoiceExtractor,
+  };
 })();
