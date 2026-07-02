@@ -31,7 +31,8 @@ const DB = (() => {
       pi_name: comp.piName || '',
       project_title: comp.projectTitle || '',
       project_no: comp.projectNo || '',
-      created_by: comp.createdBy || ''
+      created_by: comp.createdBy || '',
+      is_quick_add: !!comp.isQuickAdd
     }).select().single();
     if (error) { console.error(error); throw error; }
     return data;
@@ -46,7 +47,7 @@ const DB = (() => {
       paymentStatus: 'payment_status', paymentMethod: 'payment_method',
       paymentMode: 'payment_mode',
       remarks: 'remarks', piName: 'pi_name', projectTitle: 'project_title',
-      projectNo: 'project_no'
+      projectNo: 'project_no', isQuickAdd: 'is_quick_add'
     };
     const payload = {};
     Object.keys(patch).forEach(k => { if (map[k]) payload[map[k]] = patch[k]; });
