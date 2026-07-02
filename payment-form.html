@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Form for Payment / Reimbursement — WeRoCon Lab</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/index.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
+<script src="docgen.js"></script>
+<style>
+  :root {
+    --ink: #1b2430;
+    --paper: #f6f4ef;
+    --card: #ffffff;
+    --line: #d8d3c6;
+    --accent: #3c6e5f;
+    --accent-dark: #274c41;
+    --warn: #a2452c;
+    --mono: 'IBM Plex Mono', 'Courier New', monospace;
+    --sans: 'IBM Plex Sans', Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    padding: 40px 20px 80px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  .letterhead {
+    border-bottom: 3px solid var(--ink);
+    padding-bottom: 14px;
+    margin-bottom: 28px;
+  }
+  .letterhead .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-dark);
+  }
+  .letterhead h1 {
+    margin: 4px 0 2px;
+    font-size: 26px;
+    font-weight: 700;
+  }
+  .letterhead .form-no {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: #6b6255;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 22px 24px;
+    margin-bottom: 22px;
+  }
+  .card h2 {
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 0 0 16px;
+    color: var(--accent-dark);
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 8px;
+  }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; }
+  label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 4px; color: #3a3f47; }
+  input, select, textarea {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    font-family: var(--sans);
+    font-size: 14px;
+    background: #fdfcfa;
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .field { margin-bottom: 2px; }
+  .full { grid-column: 1 / -1; }
+
+  .upload-zone {
+    border: 2px dashed var(--line);
+    border-radius: 6px;
+    padding: 22px;
+    text-align: center;
+    cursor: pointer;
+    background: #fbfaf7;
+    transition: border-color .15s;
+  }
+  .upload-zone:hover { border-color: var(--accent); }
+  .upload-zone.dragover { border-color: var(--accent); background: #eef4f1; }
+  .upload-zone p { margin: 4px 0; font-size: 13.5px; color: #6b6255; }
+  .upload-zone strong { color: var(--accent-dark); }
+  #invoiceInput { display: none; }
+
+  .ocr-status {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--accent-dark);
+  }
+  .ocr-status.active { display: flex; }
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid var(--line);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  table.bills { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
+  table.bills th, table.bills td { border: 1px solid var(--line); padding: 7px 8px; text-align: left; }
+  table.bills th { background: #efece3; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.03em; }
+  table.bills input { border: none; background: transparent; padding: 2px 3px; font-size: 13px; }
+  table.bills input:focus { outline: 1px solid var(--accent); background: #fff; }
+  .row-actions { text-align: center; }
+  .row-actions button {
+    border: none; background: none; color: var(--warn); cursor: pointer; font-size: 15px;
+  }
+  .add-row-btn {
+    margin-top: 10px;
+    background: none;
+    border: 1px dashed var(--line);
+    border-radius: 4px;
+    padding: 7px 14px;
+    font-size: 12.5px;
+    cursor: pointer;
+    color: var(--accent-dark);
+  }
+  .add-row-btn:hover { border-color: var(--accent); }
+
+  .total-line {
+    text-align: right;
+    margin-top: 10px;
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .actions { display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+  button.primary {
+    background: var(--accent-dark);
+    color: #fff;
+    border: none;
+    padding: 12px 22px;
+    border-radius: 5px;
+    font-size: 14.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.primary:hover { background: var(--accent); }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .note {
+    font-size: 12px;
+    color: #7a7264;
+    margin-top: 10px;
+    line-height: 1.5;
+  }
+  .privacy-note {
+    font-size: 11.5px;
+    color: #8a8375;
+    margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="letterhead">
+    <div class="eyebrow">WeRoCon Lab · Procurement &amp; Inventory System</div>
+    <h1>Form for Payment / Reimbursement</h1>
+    <div class="form-no">Form No: R&amp;D/Acct-02 · Indian Institute of Technology Jodhpur, Office of Research &amp; Development</div>
+  </div>
+
+  <div class="card">
+    <h2>Project &amp; Fund Details</h2>
+    <div class="grid">
+      <div class="field"><label>Name of the PI</label><input id="piName" placeholder="Dr. ..." /></div>
+      <div class="field"><label>Project No.</label><input id="projectNo" placeholder="I/I/RIG/SAK/20250143" /></div>
+      <div class="field full"><label>Project Title</label><input id="projectTitle" placeholder="Wearable Robotics and Control Laboratory" /></div>
+      <div class="field">
+        <label>Budget Head</label>
+        <select id="budgetHead"><option>Non-Recurring</option><option>Recurring</option></select>
+      </div>
+      <div class="field">
+        <label>Procurement through</label>
+        <select id="procurementRoute"><option>GeM</option><option>Non-GeM</option></select>
+      </div>
+      <div class="field"><label>Fund Approval Reference Number</label><input id="fundApprovalRef" placeholder="IITJ/R&D/FS/Non-Recurring/2025-26/0698" /></div>
+      <div class="field"><label>Fund Approval Date</label><input id="fundApprovalDate" type="date" /></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Payee &amp; Bank Details</h2>
+    <div class="grid">
+      <div class="field full"><label>Payment to be made in the name of</label><input id="payeeName" placeholder="Vendor / Payee name" /></div>
+      <div class="field"><label>Bank A/c No.</label><input id="bankAccountNo" placeholder="493701010051218" /></div>
+      <div class="field"><label>IFSC Code</label><input id="bankIfsc" placeholder="UBIN0549371" /></div>
+    </div>
+    <p class="privacy-note">Bank details are used only to fill this form locally in your browser and are included in the generated .docx — nothing is uploaded to a server.</p>
+  </div>
+
+  <div class="card">
+    <h2>Upload Invoice — auto-extract bill details</h2>
+    <div class="upload-zone" id="dropZone">
+      <p><strong>Click to upload</strong> or drag an invoice image / PDF page here</p>
+      <p>The invoice number, date, and amount will be pulled out automatically (in-browser OCR — no server, no API key) and added as a row below. Review the extracted values before generating the form.</p>
+    </div>
+    <input type="file" id="invoiceInput" accept="image/*" multiple />
+    <div class="ocr-status" id="ocrStatus"><div class="spinner"></div><span id="ocrStatusText">Reading invoice…</span></div>
+    <p class="note">Note: OCR works best on clear, upright invoice photos or scans. PDFs should be exported as an image first. Always double-check extracted numbers — the invoice image itself is not submitted anywhere.</p>
+  </div>
+
+  <div class="card">
+    <h2>Details of Bills / Invoices Submitted</h2>
+    <table class="bills" id="billsTable">
+      <thead>
+        <tr>
+          <th style="width:28px">#</th>
+          <th>Invoice / Bill No.</th>
+          <th style="width:110px">Date</th>
+          <th>Details of Items Purchased / Expenditure</th>
+          <th>Relevancy</th>
+          <th style="width:110px">Amount (Rs.)</th>
+          <th style="width:90px">Stock-Reg. Pg.</th>
+          <th style="width:26px"></th>
+        </tr>
+      </thead>
+      <tbody id="billsBody"></tbody>
+    </table>
+    <button class="add-row-btn" id="addRowBtn">+ Add row</button>
+    <div class="total-line">Total: <span id="totalAmt">Rs. 0</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Declaration</h2>
+    <div class="field">
+      <label>Justification (only needed for urgent procurement)</label>
+      <textarea id="justification" rows="2" placeholder="Leave blank if not applicable"></textarea>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="primary" id="generateBtn">Generate Form for Payment/Reimbursement (.docx)</button>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  const billsBody = document.getElementById('billsBody');
+  const totalAmtEl = document.getElementById('totalAmt');
+
+  function fmtRs(n) { return 'Rs. ' + Number(n || 0).toLocaleString('en-IN'); }
+
+  function recalcTotal() {
+    let total = 0;
+    billsBody.querySelectorAll('tr').forEach(tr => {
+      const amt = parseFloat(tr.querySelector('.amt').value) || 0;
+      total += amt;
+    });
+    totalAmtEl.textContent = fmtRs(total);
+  }
+
+  function addBillRow(data) {
+    data = data || {};
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="row-idx"></td>
+      <td><input class="inv" value="${data.invoiceNo || ''}" placeholder="GEM-70292418" /></td>
+      <td><input class="date" value="${data.date || ''}" placeholder="13/02/2026" /></td>
+      <td><input class="items" value="${data.itemDetails || ''}" placeholder="Item purchased" /></td>
+      <td><input class="rel" value="${data.relevancy || 'Project requirement'}" /></td>
+      <td><input class="amt" type="number" step="0.01" value="${data.amount || ''}" placeholder="0" /></td>
+      <td><input class="stk" value="${data.stockRegisterPage || ''}" /></td>
+      <td class="row-actions"><button title="Remove row">✕</button></td>
+    `;
+    tr.querySelector('.row-actions button').addEventListener('click', () => {
+      tr.remove();
+      renumber();
+      recalcTotal();
+    });
+    tr.querySelector('.amt').addEventListener('input', recalcTotal);
+    billsBody.appendChild(tr);
+    renumber();
+    recalcTotal();
+  }
+
+  function renumber() {
+    billsBody.querySelectorAll('tr').forEach((tr, i) => {
+      tr.querySelector('.row-idx').textContent = i + 1;
+    });
+  }
+
+  document.getElementById('addRowBtn').addEventListener('click', () => addBillRow());
+  addBillRow(); // start with one empty row
+
+  // ---------- Invoice upload + OCR extraction ----------
+  const dropZone = document.getElementById('dropZone');
+  const invoiceInput = document.getElementById('invoiceInput');
+  const ocrStatus = document.getElementById('ocrStatus');
+  const ocrStatusText = document.getElementById('ocrStatusText');
+
+  dropZone.addEventListener('click', () => invoiceInput.click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files);
+  });
+  invoiceInput.addEventListener('change', e => handleFiles(e.target.files));
+
+  async function handleFiles(fileList) {
+    const files = Array.from(fileList || []);
+    for (const file of files) {
+      await ocrExtractInvoice(file);
+    }
+    invoiceInput.value = '';
+  }
+
+  async function ocrExtractInvoice(file) {
+    ocrStatus.classList.add('active');
+    ocrStatusText.textContent = `Reading ${file.name}…`;
+    try {
+      const { data } = await Tesseract.recognize(file, 'eng', {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            ocrStatusText.textContent = `Reading ${file.name}… ${Math.round(m.progress * 100)}%`;
+          }
+        }
+      });
+      const text = data.text || '';
+      const parsed = parseInvoiceText(text);
+      addBillRow({
+        invoiceNo: parsed.invoiceNo,
+        date: parsed.date,
+        itemDetails: parsed.itemDetails,
+        amount: parsed.amount,
+        relevancy: 'Project requirement',
+      });
+      if (!parsed.invoiceNo && !parsed.amount) {
+        ocrStatusText.textContent = `Could not confidently read ${file.name} — a blank row was added, please fill it in manually.`;
+      } else {
+        ocrStatusText.textContent = `Extracted from ${file.name}. Please verify the values in the table below.`;
+      }
+    } catch (err) {
+      console.error(err);
+      addBillRow({});
+      ocrStatusText.textContent = `Could not read ${file.name} automatically — a blank row was added.`;
+    } finally {
+      setTimeout(() => ocrStatus.classList.remove('active'), 4000);
+    }
+  }
+
+  // Heuristic text parsing — looks for common invoice-field patterns.
+  // Runs entirely client-side; nothing is sent anywhere.
+  function parseInvoiceText(text) {
+    const result = { invoiceNo: '', date: '', amount: '', itemDetails: '' };
+
+    // Invoice / Bill number: look for "Invoice No", "Bill No", "GEM-" style refs
+    const invMatch =
+      text.match(/(?:invoice|bill)\s*(?:no\.?|number|#)\s*[:\-]?\s*([A-Za-z0-9\/\-]{4,25})/i) ||
+      text.match(/\b(GEM[-\/][A-Za-z0-9]{4,20})\b/i);
+    if (invMatch) result.invoiceNo = invMatch[1].trim();
+
+    // Date: dd/mm/yyyy, dd-mm-yyyy, or "13 February 2026" style
+    const dateMatch =
+      text.match(/\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/) ||
+      text.match(/\b(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})\b/i);
+    if (dateMatch) result.date = dateMatch[1].trim();
+
+    // Amount: look for "Total", "Grand Total", "Amount Payable" followed by a number,
+    // falling back to the largest currency-like number found in the text.
+    const totalMatch = text.match(/(?:grand\s*total|total\s*amount|amount\s*payable|total)[^0-9]{0,10}([\d,]+\.?\d*)/i);
+    if (totalMatch) {
+      result.amount = totalMatch[1].replace(/,/g, '');
+    } else {
+      const numbers = [...text.matchAll(/(?:Rs\.?|₹)?\s*([\d]{2,3}(?:,\d{2,3})*(?:\.\d{1,2})?)/g)]
+        .map(m => parseFloat(m[1].replace(/,/g, '')))
+        .filter(n => !isNaN(n));
+      if (numbers.length) result.amount = String(Math.max(...numbers));
+    }
+
+    // Item details: first substantial line that isn't the header/PI boilerplate
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    const skipWords = /invoice|bill|gstin|tax|date|total|amount|address|phone|email/i;
+    const candidate = lines.find(l => l.length > 8 && l.length < 80 && !skipWords.test(l));
+    if (candidate) result.itemDetails = candidate;
+
+    return result;
+  }
+
+  // ---------- Generate the .docx ----------
+  document.getElementById('generateBtn').addEventListener('click', async () => {
+    const meta = {
+      piName: document.getElementById('piName').value,
+      projectNo: document.getElementById('projectNo').value,
+      projectTitle: document.getElementById('projectTitle').value,
+      budgetHead: document.getElementById('budgetHead').value,
+      procurementRoute: document.getElementById('procurementRoute').value,
+      fundApprovalRef: document.getElementById('fundApprovalRef').value,
+      fundApprovalDate: document.getElementById('fundApprovalDate').value,
+      payeeName: document.getElementById('payeeName').value,
+      bankAccountNo: document.getElementById('bankAccountNo').value,
+      bankIfsc: document.getElementById('bankIfsc').value,
+      justification: document.getElementById('justification').value,
+    };
+
+    const bills = [];
+    billsBody.querySelectorAll('tr').forEach(tr => {
+      const invoiceNo = tr.querySelector('.inv').value;
+      const date = tr.querySelector('.date').value;
+      const itemDetails = tr.querySelector('.items').value;
+      const relevancy = tr.querySelector('.rel').value;
+      const amount = parseFloat(tr.querySelector('.amt').value) || 0;
+      const stockRegisterPage = tr.querySelector('.stk').value;
+      if (invoiceNo || itemDetails || amount) {
+        bills.push({ invoiceNo, date, itemDetails, relevancy, amount, stockRegisterPage });
+      }
+    });
+
+    const btn = document.getElementById('generateBtn');
+    btn.disabled = true;
+    btn.textContent = 'Generating…';
+    try {
+      const stamp = new Date().toISOString().split('T')[0];
+      await DocGen.downloadOne('payment-form', meta, bills, `Form_for_Payment_Reimbursement_${stamp}.docx`);
+    } catch (err) {
+      console.error(err);
+      alert('Could not generate the document — check the console for details.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Generate Form for Payment/Reimbursement (.docx)';
+    }
+  });
+})();
+</script>
+</body>
+</html>
