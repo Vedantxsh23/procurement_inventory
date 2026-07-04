@@ -47,7 +47,9 @@ const DB = (() => {
       paymentStatus: 'payment_status', paymentMethod: 'payment_method',
       paymentMode: 'payment_mode',
       remarks: 'remarks', piName: 'pi_name', projectTitle: 'project_title',
-      projectNo: 'project_no', isQuickAdd: 'is_quick_add'
+      projectNo: 'project_no', isQuickAdd: 'is_quick_add',
+      invoiceDate: 'invoice_date', vendorBankAccount: 'vendor_bank_account',
+      vendorIfsc: 'vendor_ifsc'
     };
     const payload = {};
     Object.keys(patch).forEach(k => { if (map[k]) payload[map[k]] = patch[k]; });
@@ -110,6 +112,60 @@ const DB = (() => {
       reader.onerror = reject;
       reader.readAsDataURL(data);
     });
+  }
+
+  // Sends an invoice file (image or PDF) to the extract-invoice Edge
+  // Function, which uses Claude to read it and pull out the vendor's bank
+  // account / IFSC plus invoice number, date and amount.
+  async function extractInvoiceDetails(file) {
+    if (!APP_CONFIG.INVOICE_EXTRACT_FUNCTION_URL) return { error: 'INVOICE_EXTRACT_FUNCTION_URL not set in config.js' };
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const [prefix, base64] = dataUrl.split(',');
+      const mediaType = (prefix.match(/data:(.*);base64/) || [])[1] || file.type || 'application/octet-stream';
+
+      const res = await fetch(APP_CONFIG.INVOICE_EXTRACT_FUNCTION_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${APP_CONFIG.SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ fileBase64: base64, mediaType })
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error('Invoice extraction Edge Function error', res.status, result);
+        return { error: result.error || `Edge Function returned HTTP ${res.status}` };
+      }
+      return result;
+    } catch (e) {
+      console.error('Invoice extraction failed (network/fetch error)', e);
+      return { error: 'Network error reaching Edge Function: ' + e.message };
+    }
+  }
+
+  // Sends an invoice (base64 + media type) to the extract-invoice Edge
+  // Function, which uses Claude's vision to read off vendor bank details.
+  async function extractInvoiceData(fileBase64, mediaType) {
+    if (!APP_CONFIG.EXTRACT_INVOICE_FUNCTION_URL) return { error: 'EXTRACT_INVOICE_FUNCTION_URL not set in config.js' };
+    try {
+      const res = await fetch(APP_CONFIG.EXTRACT_INVOICE_FUNCTION_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${APP_CONFIG.SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ fileBase64, mediaType })
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error('Invoice extraction error', res.status, result);
+        return { error: result.error || `Edge Function returned HTTP ${res.status}` };
+      }
+      return result;
+    } catch (e) {
+      console.error('Invoice extraction failed (network error)', e);
+      return { error: 'Network error reaching Edge Function: ' + e.message };
+    }
   }
 
   // ---------- tracking ----------
@@ -183,7 +239,7 @@ const DB = (() => {
 
   return {
     listComponents, addComponent, updateComponent, deleteComponent,
-    uploadFile, getFileUrl, listFiles, deleteFile, downloadFileAsDataUrl,
+    uploadFile, getFileUrl, listFiles, deleteFile, downloadFileAsDataUrl, extractInvoiceDetails,
     getTracking, listAllTracking, upsertTracking, syncTrackingLive,
     logDocument, subscribeToChanges
   };
