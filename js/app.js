@@ -327,6 +327,24 @@ async function saveComponent() {
   const invoiceFile = $('#f-invoice-file').files[0];
   if (invoiceFile) {
     await DB.uploadFile(comp.id, 'invoice', invoiceFile, Auth.email());
+    toast('Scanning invoice for bank details...');
+    const extracted = await DB.extractInvoiceDetails(invoiceFile);
+    if (extracted && !extracted.error) {
+      const patch = {};
+      if (extracted.invoiceNumber) patch.invoiceNo = extracted.invoiceNumber;
+      if (extracted.invoiceDate) patch.invoiceDate = extracted.invoiceDate;
+      if (extracted.vendorBankAccount) patch.vendorBankAccount = extracted.vendorBankAccount;
+      if (extracted.vendorIfsc) patch.vendorIfsc = extracted.vendorIfsc;
+      if (Object.keys(patch).length) {
+        await DB.updateComponent(comp.id, patch);
+        toast('Invoice scanned — bank details extracted');
+      } else {
+        toast('Invoice scanned — no bank details found, you can add them manually');
+      }
+    } else if (extracted && extracted.error) {
+      console.warn('Invoice extraction failed:', extracted.error);
+      toast('Could not auto-read the invoice — you can fill bank details manually later');
+    }
   }
   const paymentProofFile = $('#f-payment-proof-file').files[0];
   if (paymentProofFile) {
@@ -472,6 +490,9 @@ function openEditComponentModal(id) {
           </select>
         </div>
         <div class="field"><label>Payment status</label><select id="e-paystatus"></select></div>
+        <div class="field"><label>Invoice date</label><input id="e-invoice-date" value="${(c.invoice_date || '').replace(/"/g, '&quot;')}" placeholder="DD/MM/YYYY"></div>
+        <div class="field"><label>Vendor bank A/c no.</label><input id="e-bank-acc" value="${(c.vendor_bank_account || '').replace(/"/g, '&quot;')}"></div>
+        <div class="field"><label>Vendor IFSC</label><input id="e-bank-ifsc" value="${(c.vendor_ifsc || '').replace(/"/g, '&quot;')}"></div>
         <div class="field full"><label>Remarks / specifications</label><textarea id="e-remarks">${c.remarks || ''}</textarea></div>
       </div>
       <div class="actions">
@@ -499,6 +520,9 @@ async function saveEditComponent(id) {
     gemStatus: $('#e-gem').value,
     paymentMode: $('#e-paymode').value,
     paymentStatus: $('#e-paystatus').value,
+    invoiceDate: $('#e-invoice-date').value.trim(),
+    vendorBankAccount: $('#e-bank-acc').value.trim(),
+    vendorIfsc: $('#e-bank-ifsc').value.trim(),
     remarks: $('#e-remarks').value.trim()
   });
   closeModal();
@@ -700,9 +724,9 @@ function renderDocuments() {
       <button class="btn" onclick="downloadSingle('non-gem')">Non-GeM Certificate</button>
       <button class="btn" onclick="downloadSingle('payment-receipt')">Payment Receipt</button>
       <button class="btn" onclick="downloadSingle('proof-of-payment')">Proof of Payment (combined)</button>
-      <button class="btn" onclick="downloadSingle('payment-form')">Payment Reimbursement Form (draft)</button>
+      <button class="btn" onclick="openPaymentFormModal()">Payment Reimbursement Form</button>
     </div>
-    <div class="notice">All documents are generated client-side from your component data and download as .docx — editable in Word. "Proof of Payment (combined)" lays every uploaded payment-proof image out on as few pages as possible. "Payment Reimbursement Form" is a draft for now — bank details etc. will be wired up later. The bundle button packages every applicable document plus your actual uploaded invoice, payment-proof and non-GeM files into one .zip. Items added via "Add existing item" (already purchased) don't appear here.</div>`;
+    <div class="notice">All documents are generated client-side from your component data and download as .docx — editable in Word. "Proof of Payment (combined)" lays every uploaded payment-proof image out on as few pages as possible. "Payment Reimbursement Form" auto-fills the vendor's bank account/IFSC from the invoice you uploaded (scanned automatically when you added the component) — you just fill in the fund approval reference and a couple of other details. The bundle button packages every applicable document plus your actual uploaded invoice, payment-proof and non-GeM files into one .zip. Items added via "Add existing item" (already purchased) don't appear here.</div>`;
 }
 
 function toggleDocComponent(id, checked) {
@@ -755,19 +779,6 @@ async function enrichWithFiles(components) {
   return enriched;
 }
 
-// Rough draft shape for the R&D/Acct-02 "Payment Reimbursement" form —
-// bank details / relevancy etc. are placeholders for now, to be wired up later.
-function toBillsShape(components) {
-  return components.filter(c => c.invoiceNo).map(c => ({
-    invoiceNo: c.invoiceNo,
-    date: '',
-    itemDetails: c.name,
-    relevancy: 'Project requirement',
-    amount: c.qty * c.unitPrice,
-    stockRegisterPage: ''
-  }));
-}
-
 async function downloadSingle(type) {
   const sel = selectedComponents();
   if (sel.length === 0) { toast('Select at least one component'); return; }
@@ -777,12 +788,74 @@ async function downloadSingle(type) {
   const names = {
     'fund-approval': 'Fund_Approval', quotation: 'Quotation_Comparison',
     'non-gem': 'Non_GeM_Certificate', 'payment-receipt': 'Payment_Receipt',
-    'proof-of-payment': 'Proof_of_Payment', 'payment-form': 'Payment_Reimbursement_Form_DRAFT'
+    'proof-of-payment': 'Proof_of_Payment'
   };
   const enriched = await enrichWithFiles(sel);
-  const payload = type === 'payment-form' ? toBillsShape(enriched) : enriched;
-  await DocGen.downloadOne(type, meta, payload, `${names[type]}_${stamp}.docx`);
+  await DocGen.downloadOne(type, meta, enriched, `${names[type]}_${stamp}.docx`);
   await DB.logDocument(type, DocGen.refNo(type.slice(0, 2).toUpperCase()), activeDocComponentIds, Auth.email());
+  toast('Downloaded');
+}
+
+// ---- Payment Reimbursement Form: bank details come from the invoice scan,
+// everything else (fund approval ref, procurement route, etc.) is asked here. ----
+function openPaymentFormModal() {
+  const sel = selectedComponents().filter(c => c.invoice_no);
+  if (sel.length === 0) { toast('Select at least one component with an invoice'); return; }
+  const first = sel[0];
+  const missingBank = sel.filter(c => !c.vendor_bank_account || !c.vendor_ifsc);
+
+  $('#modal-host').innerHTML = `
+    <div class="modal open"><div class="modalbox">
+      <h2>Payment Reimbursement Form — details</h2>
+      <p class="muted" style="margin-top:-4px;font-size:12px">Bank account fields below are auto-filled from the scanned invoice where available. Check them, then fill in the rest.</p>
+      ${missingBank.length ? `<div class="notice">No bank details could be read for: ${missingBank.map(c => c.name).join(', ')}. Enter them manually below, or fix via Inventory → Edit.</div>` : ''}
+      <div class="formgrid">
+        <div class="field"><label>Fund Approval Reference No.</label><input id="pf-ref" placeholder="e.g. IITJ/RD/2026/045"></div>
+        <div class="field"><label>Fund Approval Date</label><input type="date" id="pf-date"></div>
+        <div class="field"><label>Procurement route</label>
+          <select id="pf-route"><option>GeM</option><option>Non-GeM</option></select>
+        </div>
+        <div class="field"><label>Budget Head</label>
+          <select id="pf-budget"><option ${first.item_type !== 'Recurring' ? 'selected' : ''}>Non-Recurring</option><option ${first.item_type === 'Recurring' ? 'selected' : ''}>Recurring</option></select>
+        </div>
+        <div class="field"><label>Payee name (vendor)</label><input id="pf-payee" value="${(first.vendor || '').replace(/"/g, '&quot;')}"></div>
+        <div class="field"><label>Bank A/c No.</label><input id="pf-acc" value="${(first.vendor_bank_account || '').replace(/"/g, '&quot;')}"></div>
+        <div class="field"><label>IFSC</label><input id="pf-ifsc" value="${(first.vendor_ifsc || '').replace(/"/g, '&quot;')}"></div>
+        <div class="field full"><label>Justification (optional — only needed for urgent procurement)</label><textarea id="pf-justification"></textarea></div>
+      </div>
+      <div class="actions">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn primary" onclick="generatePaymentForm()">Generate</button>
+      </div>
+    </div></div>`;
+}
+
+async function generatePaymentForm() {
+  const sel = selectedComponents().filter(c => c.invoice_no);
+  const meta = {
+    ...metaFromSelection(),
+    fundApprovalRef: $('#pf-ref').value.trim(),
+    fundApprovalDate: $('#pf-date').value,
+    procurementRoute: $('#pf-route').value,
+    budgetHead: $('#pf-budget').value,
+    payeeName: $('#pf-payee').value.trim(),
+    bankAccountNo: $('#pf-acc').value.trim(),
+    bankIfsc: $('#pf-ifsc').value.trim(),
+    justification: $('#pf-justification').value.trim()
+  };
+  const bills = sel.map(c => ({
+    invoiceNo: c.invoice_no,
+    date: c.invoice_date || '',
+    itemDetails: c.name,
+    relevancy: 'Project requirement',
+    amount: c.qty * c.unit_price,
+    stockRegisterPage: ''
+  }));
+  closeModal();
+  toast('Generating...');
+  const stamp = new Date().toISOString().split('T')[0];
+  await DocGen.downloadOne('payment-form', meta, bills, `Payment_Reimbursement_Form_${stamp}.docx`);
+  await DB.logDocument('payment-form', DocGen.refNo('PF'), activeDocComponentIds, Auth.email());
   toast('Downloaded');
 }
 
