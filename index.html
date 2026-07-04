@@ -1,113 +1,49 @@
-// supabase/functions/extract-invoice/index.ts
-// Reads an uploaded invoice (image or PDF) using OCR.space's FREE OCR API
-// (no AI cost — https://ocr.space/OCRAPI, 25,000 requests/month free, no
-// credit card needed) and then pulls out the vendor's bank account / IFSC
-// plus invoice number, date and amount using pattern matching on the
-// recognised text.
-//
-// Setup:
-//   1. Get a free API key at https://ocr.space/OCRAPI/freekey (just an email,
-//      no card).
-//   2. supabase functions deploy extract-invoice
-//   3. supabase secrets set OCR_SPACE_API_KEY=your-free-key-here
-//
-// Accuracy note: since there's no AI reasoning here, this is pattern
-// matching over OCR text — it works well for typical invoices but isn't
-// perfect. That's why the app always shows the extracted fields for you to
-// check/edit before generating the reimbursement form.
-
-const OCR_SPACE_API_KEY = Deno.env.get("OCR_SPACE_API_KEY");
-
-Deno.serve(async (req) => {
-  const cors = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  };
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-
-  try {
-    if (!OCR_SPACE_API_KEY) {
-      return new Response(JSON.stringify({ error: "OCR_SPACE_API_KEY not set in Supabase secrets" }), { status: 500, headers: cors });
-    }
-
-    const { fileBase64, mediaType } = await req.json();
-    if (!fileBase64 || !mediaType) {
-      return new Response(JSON.stringify({ error: "fileBase64 and mediaType are required" }), { status: 400, headers: cors });
-    }
-
-    const filetype = mediaType === "application/pdf" ? "PDF"
-      : mediaType.includes("png") ? "PNG"
-      : mediaType.includes("webp") ? "WEBP"
-      : "JPG";
-
-    const form = new URLSearchParams();
-    form.set("base64Image", `data:${mediaType};base64,${fileBase64}`);
-    form.set("filetype", filetype);
-    form.set("OCREngine", "2");       // more accurate engine
-    form.set("scale", "true");
-    form.set("detectOrientation", "true");
-
-    const ocrRes = await fetch("https://api.ocr.space/parse/image", {
-      method: "POST",
-      headers: {
-        "apikey": OCR_SPACE_API_KEY,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: form.toString(),
-    });
-
-    const ocrData = await ocrRes.json();
-    if (!ocrRes.ok || ocrData.IsErroredOnProcessing) {
-      console.error("OCR.space error", ocrData);
-      const msg = Array.isArray(ocrData.ErrorMessage) ? ocrData.ErrorMessage.join("; ") : (ocrData.ErrorMessage || "OCR.space processing error");
-      return new Response(JSON.stringify({ error: msg }), { status: 500, headers: cors });
-    }
-
-    const text: string = (ocrData.ParsedResults || []).map((r: any) => r.ParsedText || "").join("\n");
-    if (!text.trim()) {
-      return new Response(JSON.stringify({ error: "No text could be read from this file" }), { status: 200, headers: cors });
-    }
-
-    const parsed = extractFields(text);
-    return new Response(JSON.stringify(parsed), { headers: { ...cors, "content-type": "application/json" } });
-  } catch (e) {
-    console.error("extract-invoice failed", e);
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: cors });
-  }
-});
-
-// ---------- pattern-matching extraction (no AI) ----------
-function extractFields(text: string) {
-  const norm = text.replace(/\r/g, "");
-
-  // IFSC: 4 letters + '0' + 6 alphanumeric (e.g. UBIN0549371)
-  const ifscMatch = norm.match(/\b[A-Z]{4}0[A-Z0-9]{6}\b/);
-
-  // Bank account number: look near "A/c No", "Account No", "Acc No" etc.
-  const accMatch = norm.match(/(?:A\/?c\.?\s*No\.?|Account\s*No\.?|Acc(?:ount)?\s*Number)[:\-–]?\s*([0-9][0-9\s]{7,20}[0-9])/i);
-
-  // Invoice / bill number
-  const invMatch = norm.match(/(?:Invoice|Bill)\s*(?:No\.?|Number|#)?[:\-–]?\s*([A-Za-z0-9\/\-]{4,25})/i);
-
-  // Date in DD/MM/YYYY, DD-MM-YYYY or DD.MM.YYYY
-  const dateMatch = norm.match(/\b(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})\b/);
-
-  // Amount — take the last "Total"/"Grand Total"/"Amount" figure found,
-  // since that's usually the final payable amount at the bottom of the bill
-  const amountMatches = [...norm.matchAll(/(?:Grand\s*Total|Total\s*Amount|Total|Amount\s*Payable|Amount)\D{0,12}(\d[\d,]*\.?\d{0,2})/gi)];
-  const amount = amountMatches.length ? parseFloat(amountMatches[amountMatches.length - 1][1].replace(/,/g, "")) : 0;
-
-  // Vendor name — first line that looks like a company name
-  const vendorLine = norm.split("\n").map(l => l.trim()).find(l =>
-    /\b(pvt|private|ltd|limited|enterprises|systems|solutions|traders|corp|industries|technologies|technology|company|co\.)\b/i.test(l)
-  ) || "";
-
-  return {
-    invoiceNumber: invMatch ? invMatch[1].trim() : "",
-    invoiceDate: dateMatch ? dateMatch[1] : "",
-    amount: isNaN(amount) ? 0 : amount,
-    vendorName: vendorLine,
-    vendorBankAccount: accMatch ? accMatch[1].replace(/\s+/g, "") : "",
-    vendorIfsc: ifscMatch ? ifscMatch[0] : "",
-  };
-}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WeRoCon Lab — Procurement &amp; Inventory System</title>
+<link rel="icon" href="assets/logo.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="gate"></div>
+  <div id="shell" class="shell hidden">
+    <header class="top">
+      <div class="brand">
+        <img src="assets/logo.png" alt="WeRoCon Lab logo">
+        <div>
+          <b>WeRoCon Lab — Procurement &amp; Inventory System</b>
+          <small>Automatic purchasing, documentation &amp; stock control</small>
+        </div>
+      </div>
+      <div class="user">
+        <span id="role-label"></span>
+        <button class="btn" onclick="logout()">Log out</button>
+      </div>
+    </header>
+    <nav class="nav">
+      <button class="on" data-tab="dashboard">Overview</button>
+      <button data-tab="add">Enter component</button>
+      <button data-tab="documents">Documents</button>
+      <button data-tab="tracking">Shipment tracking</button>
+      <button data-tab="inventory">Inventory</button>
+    </nav>
+    <main class="main" id="app"></main>
+  </div>
+  <div class="toast" id="toast"></div>
+  <div id="modal-host"></div>
+  <!-- vendored libraries (no CDN dependency, works fully offline / on GitHub Pages) -->
+  <script src="js/supabase.js"></script>
+  <script src="js/docx.iife.js"></script>
+  <script src="js/jszip.min.js"></script>
+  <!-- app modules -->
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/docgen.js"></script>
+  <script src="js/tracking.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>   this is my index , as i have told u those items i have added through exisiting component  should not appear in tracking , dashboard , docs and all
