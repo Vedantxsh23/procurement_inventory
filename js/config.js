@@ -16,6 +16,13 @@ const APP_CONFIG = {
   // keeping your tc_live_... API key off the public GitHub repo.
   // Format: https://<project-ref>.supabase.co/functions/v1/track-shipment
   TRACKING_FUNCTION_URL: 'https://lzmcblzqoakxfmgexyar.supabase.co/functions/v1/track-shipment',
+  // Set once you've deployed the extract-invoice Edge Function (see
+  // supabase/functions/extract-invoice/index.ts). This function uses the
+  // free OCR.space API to read uploaded invoices and pull out the vendor's
+  // bank account / IFSC for the Payment Reimbursement Form, keeping your
+  // OCR_SPACE_API_KEY off the public GitHub repo.
+  // Format: https://<project-ref>.supabase.co/functions/v1/extract-invoice
+  INVOICE_EXTRACT_FUNCTION_URL: 'https://lzmcblzqoakxfmgexyar.supabase.co/functions/v1/extract-invoice',
   LAB_NAME: 'WeRoCon Lab',
   PROJECT_TITLE_DEFAULT: 'Wearable Robotics Control'
 };
