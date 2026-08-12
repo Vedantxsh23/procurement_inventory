@@ -879,3 +879,111 @@ window.addEventListener('DOMContentLoaded', async () => {
     renderGate();
   }
 });
+
+/* Codex fix: make Inventory edit + save reliable. */
+(() => {
+  const STORAGE_KEY = 'werocon_inventory_items';
+  let editingInventoryId = null;
+  const q = (selectors, root = document) => { for (const selector of selectors) { const el = root.querySelector(selector); if (el) return el; } return null; };
+  const norm = (value) => String(value ?? '').trim();
+  const toNumber = (value) => { const n = Number(String(value ?? '').replace(/[^0-9.-]/g, '')); return Number.isFinite(n) ? n : 0; };
+  const getInventory = () => {
+    const candidates = [window.inventory, window.inventoryItems, window.Inventory, window.state?.inventory, window.appState?.inventory, window.AppState?.inventory, window.data?.inventory];
+    const found = candidates.find(Array.isArray);
+    if (found) return found;
+    try { const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); if (Array.isArray(saved)) return saved; } catch {}
+    return [];
+  };
+  const setInventory = (items) => {
+    if (Array.isArray(window.inventory)) window.inventory = items;
+    if (Array.isArray(window.inventoryItems)) window.inventoryItems = items;
+    if (window.state && Array.isArray(window.state.inventory)) window.state.inventory = items;
+    if (window.appState && Array.isArray(window.appState.inventory)) window.appState.inventory = items;
+    if (window.AppState && Array.isArray(window.AppState.inventory)) window.AppState.inventory = items;
+    if (window.data && Array.isArray(window.data.inventory)) window.data.inventory = items;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  };
+  const itemKeys = (item) => [item?.id, item?.itemId, item?.inventoryId, item?.sku, item?.code, item?.name, item?.itemName];
+  const findItem = (id) => { const wanted = norm(id); return getInventory().find((item) => itemKeys(item).some((value) => norm(value) === wanted)); };
+  const inventoryForm = () => q(['#inventoryForm', 'form[data-form="inventory"]', 'form[data-module="inventory"]', 'form[data-section="inventory"]', '#inventory form', '[data-page="inventory"] form']);
+  const field = (form, names) => {
+    for (const name of names) {
+      const selectors = ['[name="' + name + '"]', '#' + name, '[data-field="' + name + '"]', '[name$=".' + name + '"]'];
+      const el = q(selectors, form || document);
+      if (el) return el;
+    }
+    return null;
+  };
+  const setField = (form, names, value) => { const el = field(form, names); if (!el) return; el.value = value ?? ''; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
+  const readForm = (form) => {
+    const fd = new FormData(form);
+    const raw = Object.fromEntries(fd.entries());
+    const read = (...names) => { for (const name of names) { if (raw[name] != null && raw[name] !== '') return raw[name]; const el = field(form, [name]); if (el && el.value !== '') return el.value; } return ''; };
+    return {
+      id: editingInventoryId || read('id', 'itemId', 'inventoryId', 'sku', 'code') || Date.now().toString(),
+      name: read('name', 'itemName', 'item', 'description'),
+      category: read('category', 'type'),
+      quantity: toNumber(read('quantity', 'qty', 'stock', 'availableQty')),
+      unit: read('unit', 'uom'),
+      location: read('location', 'store', 'rack'),
+      reorderLevel: toNumber(read('reorderLevel', 'reorder', 'minStock', 'minimumStock')),
+      supplier: read('supplier', 'vendor', 'supplierName'),
+      notes: read('notes', 'remarks', 'comments'),
+    };
+  };
+  const fillForm = (item) => {
+    const form = inventoryForm();
+    if (!form || !item) return false;
+    editingInventoryId = norm(item.id ?? item.itemId ?? item.inventoryId ?? item.sku ?? item.code ?? item.name ?? item.itemName);
+    setField(form, ['id', 'itemId', 'inventoryId', 'sku', 'code'], editingInventoryId);
+    setField(form, ['name', 'itemName', 'item', 'description'], item.name ?? item.itemName ?? item.description ?? '');
+    setField(form, ['category', 'type'], item.category ?? item.type ?? '');
+    setField(form, ['quantity', 'qty', 'stock', 'availableQty'], item.quantity ?? item.qty ?? item.stock ?? item.availableQty ?? '');
+    setField(form, ['unit', 'uom'], item.unit ?? item.uom ?? '');
+    setField(form, ['location', 'store', 'rack'], item.location ?? item.store ?? item.rack ?? '');
+    setField(form, ['reorderLevel', 'reorder', 'minStock', 'minimumStock'], item.reorderLevel ?? item.reorder ?? item.minStock ?? item.minimumStock ?? '');
+    setField(form, ['supplier', 'vendor', 'supplierName'], item.supplier ?? item.vendor ?? item.supplierName ?? '');
+    setField(form, ['notes', 'remarks', 'comments'], item.notes ?? item.remarks ?? item.comments ?? '');
+    form.dataset.editingId = editingInventoryId;
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return true;
+  };
+  const renderInventory = () => { for (const fn of ['renderInventory', 'renderInventoryTable', 'loadInventory', 'refreshInventory', 'showInventory']) { if (typeof window[fn] === 'function') { try { window[fn](); return; } catch {} } } };
+  const saveItem = async (form) => {
+    const next = readForm(form);
+    const items = getInventory();
+    const id = norm(next.id);
+    const index = items.findIndex((item) => [item?.id, item?.itemId, item?.inventoryId, item?.sku, item?.code].some((value) => norm(value) === id));
+    const previous = index >= 0 ? items[index] : {};
+    const merged = { ...previous, ...next, id: previous.id ?? next.id };
+    const updated = index >= 0 ? items.map((item, i) => (i === index ? merged : item)) : [...items, merged];
+    setInventory(updated);
+    if (window.db?.saveInventoryItem) await window.db.saveInventoryItem(merged);
+    else if (window.DB?.saveInventoryItem) await window.DB.saveInventoryItem(merged);
+    else if (window.saveInventoryItem) await window.saveInventoryItem(merged);
+    else if (window.updateInventoryItem && index >= 0) await window.updateInventoryItem(merged);
+    else if (window.addInventoryItem && index < 0) await window.addInventoryItem(merged);
+    editingInventoryId = null;
+    delete form.dataset.editingId;
+    form.reset();
+    renderInventory();
+  };
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('button, a, [role="button"], [data-action]');
+    if (!button) return;
+    const label = norm(button.dataset.action || button.dataset.mode || button.textContent).toLowerCase();
+    if (!/edit/.test(label)) return;
+    const row = button.closest('tr, [data-inventory-id], [data-item-id], [data-id]');
+    const id = button.dataset.id || button.dataset.inventoryId || button.dataset.itemId || row?.dataset.inventoryId || row?.dataset.itemId || row?.dataset.id || row?.children?.[0]?.textContent;
+    const item = findItem(id);
+    if (item && fillForm(item)) { event.preventDefault(); event.stopPropagation(); }
+  }, true);
+  document.addEventListener('submit', (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    const looksInventory = form.matches('#inventoryForm, form[data-form="inventory"], form[data-module="inventory"], form[data-section="inventory"]') || !!form.closest('#inventory, [data-page="inventory"]') || /inventory|stock|item/i.test(form.id + ' ' + form.className + ' ' + form.dataset.form + ' ' + form.dataset.module);
+    if (!looksInventory) return;
+    event.preventDefault();
+    saveItem(form).catch((error) => { console.error('Inventory save failed:', error); alert('Inventory could not be saved. Please check the fields and try again.'); });
+  }, true);
+})();
